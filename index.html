@@ -813,14 +813,12 @@
         if(suppressNextEcho){ suppressNextEcho = false; return; }
         const remote = snapshot.val();
         if(!remote){
-          // nothing at the live-data path yet (first-ever connection, or just
-          // migrated from the old flat storage layout) — push what we have
-          // locally so sync goes live immediately instead of waiting for an edit
-          setStatus('connected — sending local data to sync…');
-          suppressNextEcho = true;
-          syncDataRef.set(JSON.stringify(state))
-            .then(() => setStatus('synced across devices'))
-            .catch((err) => setStatus('connected, but seeding failed: ' + (err && err.message ? err.message : err)));
+          // Nothing at the live-data path. This does NOT automatically push
+          // anything anymore — an earlier version did, and a transient/empty
+          // read caused real data loss. Now it just tells you, and pushing
+          // is a deliberate, confirmed action via the Backups dialog.
+          const n = allSpotsGlobal().length;
+          setStatus(`cloud is empty — this device has ${n} bay${n===1?'':'s'} locally; open "Backups" to push it up when you're sure`);
           return;
         }
         const parsed = migrate(JSON.parse(remote));
@@ -955,6 +953,38 @@
     }
   }
 
+  function pushLocalToCloudSectionHtml(){
+    if(!hasFirebaseSync) return '';
+    const n = allSpotsGlobal().length;
+    return `
+      <div class="field" style="border:1px solid var(--line);border-radius:var(--radius);padding:10px;background:var(--paper);">
+        <label style="margin-bottom:4px;">Cloud sync</label>
+        <div class="sub" style="margin-bottom:8px;">This device currently has ${n} bay${n===1?'':'s'} locally. Only use this if you're sure this device's copy is the one everyone else should get — it overwrites the cloud copy.</div>
+        <button class="btn ghost small" id="pushCloudBtn">Push this device's data to the cloud</button>
+      </div>
+    `;
+  }
+
+  function bindPushCloudBtn(){
+    const btn = document.getElementById('pushCloudBtn');
+    if(!btn) return;
+    btn.addEventListener('click', () => {
+      confirmAction(
+        'Push local data to the cloud?',
+        `This overwrites the cloud copy with what's on this device right now. If another device has different or newer data, that will be lost. A safety backup of what's currently in the cloud is not possible to guarantee here, so only do this if you're confident this device is correct.`,
+        () => {
+          createBackup();
+          if(syncDataRef){
+            suppressNextEcho = true;
+            syncDataRef.set(JSON.stringify(state))
+              .then(() => setStatus('pushed to cloud'))
+              .catch(() => setStatus('push failed — check your connection'));
+          }
+        }
+      );
+    });
+  }
+
   function openBackupsModal(){
     const overlay = document.getElementById('overlay');
     const body = document.getElementById('modalBody');
@@ -968,6 +998,7 @@
         body.innerHTML = `
           <h3>Backups</h3>
           <div class="sub">No backups yet. One is taken automatically roughly every 15 minutes while you're actively using the app, and always right before a restore.</div>
+          ${pushLocalToCloudSectionHtml()}
           <div class="modal-actions"><button class="btn ghost" id="bkCloseBtn">Close</button></div>
         `;
       } else {
@@ -982,6 +1013,7 @@
               </div>
             `).join('')}
           </div>
+          ${pushLocalToCloudSectionHtml()}
           <div class="modal-actions"><button class="btn ghost" id="bkCloseBtn">Close</button></div>
         `;
         body.querySelectorAll('[data-restore-backup]').forEach(btn => {
@@ -1006,6 +1038,7 @@
           });
         });
       }
+      bindPushCloudBtn();
       const closeBtn = document.getElementById('bkCloseBtn');
       if(closeBtn) closeBtn.addEventListener('click', () => { body.className = 'modal'; closeModal(); });
     });
