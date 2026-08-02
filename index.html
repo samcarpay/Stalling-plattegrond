@@ -613,13 +613,30 @@
 
   function initFirebaseSync(){
     if(!hasFirebaseSync) return;
+    let connected = false;
+    const timeoutId = setTimeout(() => {
+      if(!connected){
+        setStatus('sync not responding — check firebase-config.js values and your database rules');
+      }
+    }, 7000);
     try{
       firebase.initializeApp(firebaseConfig);
       syncRef = firebase.database().ref(typeof SYNC_PATH !== 'undefined' ? SYNC_PATH : 'storage-sites-data');
       syncRef.on('value', (snapshot) => {
+        connected = true;
+        clearTimeout(timeoutId);
         if(suppressNextEcho){ suppressNextEcho = false; return; }
         const remote = snapshot.val();
-        if(!remote) return; // nothing there yet — our next save() will seed it
+        if(!remote){
+          // database is empty (first-ever connection) — push our current local
+          // data up so sync goes live immediately instead of waiting for an edit
+          setStatus('connected — sending local data to sync…');
+          suppressNextEcho = true;
+          syncRef.set(JSON.stringify(state))
+            .then(() => setStatus('synced across devices'))
+            .catch((err) => setStatus('connected, but seeding failed: ' + (err && err.message ? err.message : err)));
+          return;
+        }
         const parsed = migrate(JSON.parse(remote));
         if(!parsed) return;
         // don't yank the rug out from under an in-progress edit
@@ -633,9 +650,16 @@
         render();
         setStatus('synced just now');
         applyingRemote = false;
+      }, (error) => {
+        connected = true;
+        clearTimeout(timeoutId);
+        console.error('Firebase sync error', error);
+        setStatus('sync error: ' + (error && error.message ? error.message : error) + ' — check your database rules');
       });
     }catch(e){
+      clearTimeout(timeoutId);
       console.error('Firebase sync failed to start', e);
+      setStatus('sync failed to start: ' + (e && e.message ? e.message : e));
     }
   }
 
