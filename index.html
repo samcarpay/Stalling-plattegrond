@@ -1015,37 +1015,43 @@
   }
 
   // ---------- modal: add spot type + quantity picker ----------
-  function openAddSpotMenu(rowId, anchorBtn){
-    closeAnyMenu();
+  function openAddBayModal(rowId){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal';
     const w = activeWarehouse();
     const order = typeOrderFor(w);
     const row = findRow(rowId);
     let selectedType = row.spots.length ? row.spots[row.spots.length - 1].type : order[0];
 
-    const menu = document.createElement('div');
-    menu.className = 'add-menu' + (anchorBtn.classList.contains('add-spot-btn') ? '' : ' below');
-    menu.innerHTML = `
-      <div class="type-row" id="quickTypeRow">
-        ${order.map(key => {
-          const t = TYPES[key];
-          const active = key===selectedType;
-          const styleAttr = active ? ` style="border-color:${t.color};background:${hexAlpha(t.color,0.14)};color:${t.color}"` : '';
-          return `<div class="type-chip ${active?'active':''}" data-qtype="${key}"${styleAttr}>${escapeHtml(t.label)}</div>`;
-        }).join('')}
+    body.innerHTML = `
+      <h3>Add bay(s)</h3>
+      <div class="sub">Add one or more empty bays to this row — assign owners to them later.</div>
+      <div class="field">
+        <label>Vehicle type</label>
+        <div class="type-row" id="quickTypeRow">
+          ${order.map(key => {
+            const t = TYPES[key];
+            const active = key===selectedType;
+            const styleAttr = active ? ` style="border-color:${t.color};background:${hexAlpha(t.color,0.14)};color:${t.color}"` : '';
+            return `<div class="type-chip ${active?'active':''}" data-qtype="${key}"${styleAttr}>${escapeHtml(t.label)}</div>`;
+          }).join('')}
+        </div>
       </div>
-      <div class="add-menu-qty">
-        <label>Qty</label>
+      <div class="field">
+        <label>Quantity</label>
         <input type="number" id="quickQty" min="1" max="20" value="1" />
-        <button class="btn small" id="quickAddBtn">Add</button>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="quickCancelBtn">Cancel</button>
+        <button class="btn" id="quickAddBtn">Add</button>
       </div>
     `;
-    anchorBtn.parentElement.appendChild(menu);
 
-    menu.querySelectorAll('[data-qtype]').forEach(chip => {
-      chip.addEventListener('click', (e) => {
-        e.stopPropagation();
+    body.querySelectorAll('[data-qtype]').forEach(chip => {
+      chip.addEventListener('click', () => {
         selectedType = chip.getAttribute('data-qtype');
-        menu.querySelectorAll('[data-qtype]').forEach(c => {
+        body.querySelectorAll('[data-qtype]').forEach(c => {
           c.classList.remove('active');
           c.style.borderColor = ''; c.style.background = ''; c.style.color = '';
         });
@@ -1057,27 +1063,19 @@
       });
     });
 
-    menu.querySelector('#quickQty').addEventListener('click', e => e.stopPropagation());
+    overlay.classList.add('show');
+    document.getElementById('quickCancelBtn').addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
 
-    menu.querySelector('#quickAddBtn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      const qtyInput = menu.querySelector('#quickQty');
+    document.getElementById('quickAddBtn').addEventListener('click', () => {
+      const qtyInput = document.getElementById('quickQty');
       const qty = Math.max(1, Math.min(20, parseInt(qtyInput.value, 10) || 1));
       const targetRow = findRow(rowId);
       for(let i = 0; i < qty; i++) targetRow.spots.push(spotDefault(selectedType, nextSeqFor(targetRow)));
-      closeAnyMenu();
+      closeModal();
       render(); save();
     });
   }
-  function closeAnyMenu(){
-    document.querySelectorAll('.add-menu').forEach(m => m.remove());
-  }
-  // single delegated listener: closes an open add-menu on any click outside it
-  document.addEventListener('click', (e) => {
-    if(!e.target.closest('.add-menu') && !e.target.closest('[data-add-spot]')){
-      closeAnyMenu();
-    }
-  });
 
   // ---------- modal: assign / edit occupant ----------
   function openSpotModal(row, spot, sideName, rowIdx, sIdx){
@@ -1298,7 +1296,7 @@
     const addSpotBtn = e.target.closest('[data-add-spot]');
     if(addSpotBtn){
       e.stopPropagation();
-      openAddSpotMenu(addSpotBtn.getAttribute('data-add-spot'), addSpotBtn);
+      openAddBayModal(addSpotBtn.getAttribute('data-add-spot'));
       return;
     }
     const clearBtn = e.target.closest('[data-clear]');
