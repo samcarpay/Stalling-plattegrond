@@ -46,7 +46,8 @@
   }
 
   *{box-sizing:border-box;}
-  body{margin:0;padding:0;background:transparent;color:var(--ink);font-family:var(--font-body);}
+  html{background:var(--paper);}
+  body{margin:0;padding:0;background:var(--paper);color:var(--ink);font-family:var(--font-body);overscroll-behavior-x:none;}
 
   .sheet{
     background:
@@ -847,7 +848,7 @@
     const free = total - occupied;
     const el = document.getElementById('stats');
     el.innerHTML = '';
-    [['Bays', total], ['Occupied', occupied], ['Free', free]].forEach(([l,n]) => {
+    [['Plekken', total], ['In gebruik', occupied], ['Vrij', free]].forEach(([l,n]) => {
       const d = document.createElement('div');
       d.className = 'stat';
       d.innerHTML = `<div class="n">${n}</div><div class="l">${l}</div>`;
@@ -873,6 +874,9 @@
     const w = activeWarehouse();
     if(!w) return;
 
+    const scroller = document.createElement('div');
+    scroller.className = 'plan-scroll';
+
     const plan = document.createElement('div');
     plan.className = 'plan';
 
@@ -893,24 +897,8 @@
       plan.appendChild(renderRowBlock(row, 'Left', i, w.left.length, 'left'));
     });
 
-    wrap.appendChild(plan);
-    syncLanes();
-  }
-
-  // Keep every row's horizontal scroll in lockstep, so e.g. R6-2 (back row)
-  // always sits directly behind R6-1 (front row) as you scroll left/right.
-  function syncLanes(){
-    const lanes = Array.from(document.querySelectorAll('#plan .lane'));
-    let syncing = false;
-    lanes.forEach(lane => {
-      lane.addEventListener('scroll', () => {
-        if(syncing) return;
-        syncing = true;
-        const x = lane.scrollLeft;
-        lanes.forEach(other => { if(other !== lane) other.scrollLeft = x; });
-        syncing = false;
-      });
-    });
+    scroller.appendChild(plan);
+    wrap.appendChild(scroller);
   }
 
   function renderRowBlock(row, sideName, idx, sideCount, sideKey){
