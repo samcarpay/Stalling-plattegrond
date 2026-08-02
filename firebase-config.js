@@ -39,15 +39,15 @@
 //      sync automatically whenever you're online.
 // ─────────────────────────────────────────────────────────────────
 
-const FIREBASE_ENABLED = false;
+const FIREBASE_ENABLED = true;
 
 const firebaseConfig = {
-  apiKey: "",
-  databaseURL: "",
-  projectId: "",
+  apiKey: "AIzaSyAM7A6huZzCnTiGgXymOpS-3uzelzn0gjI",
+  databaseURL: "https://stalling-plattegrond-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "stalling-plattegrond",
 };
 
-const SYNC_PATH = "YOUR-PRIVATE-PATH-HERE";
+const SYNC_PATH = "Plattegrond-111ws-qbh3Tm791";
 
 // ─────────────────────────────────────────────────────────────────
 // PIN GATE (optional)
@@ -67,4 +67,4 @@ const SYNC_PATH = "YOUR-PRIVATE-PATH-HERE";
 // entirely — the app then behaves exactly as before.
 // ─────────────────────────────────────────────────────────────────
 
-const APP_PIN = "";
+const APP_PIN = "0808";
