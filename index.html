@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Storage Sites — Yard Plan</title>
+
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#1B2A4A" />
+
+<!-- iOS: lets "Add to Home Screen" launch full-screen with no browser chrome -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Storage Sites" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+
+<!-- Android / general -->
+<meta name="mobile-web-app-capable" content="yes" />
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
+
+<style>
+  :root{
+    --paper: #F6F3EA;
+    --paper-line: #DAD3BE;
+    --ink: #1B2A4A;
+    --ink-soft: #5B6580;
+    --ink-faint: #97A0B5;
+    --card: #FFFEFA;
+    --line: #C9C2AC;
+
+    --car: #B54834;
+    --car-soft: #F1DAD2;
+    --camper: #2E6E62;
+    --camper-soft: #D7E6E1;
+    --caravan: #47598C;
+    --caravan-soft: #DDE1EE;
+    --trailer: #B4831F;
+    --trailer-soft: #F0E3C9;
+    --folding: #6E5B8C;
+    --folding-soft: #E1DCEA;
+
+    --radius: 3px;
+    --font-display: ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  *{box-sizing:border-box;}
+  body{margin:0;padding:0;background:transparent;color:var(--ink);font-family:var(--font-body);}
+
+  .sheet{
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 27px, var(--paper-line) 27px, var(--paper-line) 28px),
+      repeating-linear-gradient(90deg, transparent, transparent 27px, var(--paper-line) 27px, var(--paper-line) 28px),
+      var(--paper);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:28px 28px 36px;
+    min-height:400px;
+  }
+
+  /* ---------- header ---------- */
+  .titleblock{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    border-bottom:2px solid var(--ink);
+    padding-bottom:14px;
+    margin-bottom:18px;
+    gap:20px;
+    flex-wrap:wrap;
+  }
+  .titleblock-left{flex:1;min-width:220px;}
+  .eyebrow{
+    font-family:var(--font-display);
+    font-size:11px;
+    letter-spacing:.14em;
+    color:var(--ink-soft);
+    text-transform:uppercase;
+    margin-bottom:4px;
+  }
+  #facilityName{
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:26px;
+    color:var(--ink);
+    border:none;
+    background:transparent;
+    outline:none;
+    padding:2px 4px;
+    margin-left:-4px;
+    border-radius:var(--radius);
+    max-width:100%;
+  }
+  #facilityName:focus{background:var(--card);box-shadow:0 0 0 1px var(--line);}
+  .scale-note{font-size:12px;color:var(--ink-faint);margin-top:4px;font-family:var(--font-display);}
+
+  .stats{display:flex;gap:10px;flex-wrap:wrap;}
+  .stat{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:8px 14px;
+    text-align:center;
+    min-width:64px;
+  }
+  .stat .n{font-family:var(--font-display);font-weight:700;font-size:19px;line-height:1;}
+  .stat .l{font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;}
+
+  /* ---------- warehouse tabs ---------- */
+  .wh-tabs{
+    display:flex;
+    gap:6px;
+    align-items:center;
+    margin-bottom:6px;
+    overflow-x:auto;
+    padding-bottom:4px;
+  }
+  .wh-tabs::-webkit-scrollbar{height:6px;}
+  .wh-tabs::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
+  .wh-tab{
+    position:relative;
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+    gap:7px;
+    padding:7px 10px 7px 12px;
+    border:1.5px solid var(--line);
+    border-radius:var(--radius);
+    background:var(--card);
+    cursor:pointer;
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--ink-soft);
+  }
+  .wh-tab:hover{border-color:var(--ink-faint);color:var(--ink);}
+  .wh-tab.active{border-color:var(--ink);background:var(--ink);color:var(--paper);}
+  .wh-tab .wh-count{
+    font-family:var(--font-display);font-size:10px;font-weight:600;
+    padding:1px 5px;border-radius:8px;background:rgba(0,0,0,.08);
+  }
+  .wh-tab.active .wh-count{background:rgba(255,255,255,.18);}
+  .wh-tab-name{
+    background:transparent;border:none;outline:none;font:inherit;color:inherit;
+    max-width:140px;
+  }
+  .wh-tab-del{
+    display:none;
+    width:15px;height:15px;border-radius:50%;
+    align-items:center;justify-content:center;
+    background:rgba(0,0,0,.12);
+    font-size:9px;line-height:1;flex-shrink:0;
+  }
+  .wh-tab:hover .wh-tab-del{display:flex;}
+  .wh-tab-add{
+    flex-shrink:0;
+    padding:7px 12px;
+    border:1.5px dashed var(--ink-faint);
+    border-radius:var(--radius);
+    background:transparent;
+    color:var(--ink-faint);
+    font-size:13px;
+    font-weight:700;
+    cursor:pointer;
+    font-family:var(--font-display);
+  }
+  .wh-tab-add:hover{color:var(--ink);border-color:var(--ink);}
+
+  .global-stat-line{
+    font-size:11.5px;color:var(--ink-soft);margin:2px 0 18px;font-family:var(--font-display);
+  }
+
+  .wh-purpose{
+    font-size:12.5px;color:var(--ink-soft);margin:-6px 0 18px;
+  }
+  .wh-purpose b{color:var(--ink);}
+
+  /* ---------- search ---------- */
+  .search-wrap{position:relative;margin-bottom:16px;}
+  #searchInput{
+    width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:var(--radius);
+    font-family:var(--font-body);font-size:13.5px;color:var(--ink);background:var(--card);
+    outline:none;
+  }
+  #searchInput:focus{border-color:var(--ink);}
+  .search-results{
+    display:none;
+    position:absolute;top:100%;left:0;right:0;margin-top:6px;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:0 10px 26px rgba(27,42,74,.18);
+    max-height:280px;overflow-y:auto;z-index:30;
+  }
+  .search-results.show{display:block;}
+  .search-result{
+    display:flex;align-items:center;gap:10px;
+    padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--paper-line);
+  }
+  .search-result:last-child{border-bottom:none;}
+  .search-result:hover{background:var(--paper);}
+  .search-result .dot{flex-shrink:0;}
+  .search-result-main{flex:1;min-width:0;}
+  .search-result-name{font-size:13px;font-weight:600;color:var(--ink);}
+  .search-result-meta{font-size:11px;color:var(--ink-soft);}
+  .search-empty{padding:14px 12px;font-size:12.5px;color:var(--ink-faint);text-align:center;}
+
+  @keyframes bayPulse{
+    0%{box-shadow:0 0 0 0 rgba(27,42,74,.55);}
+    70%{box-shadow:0 0 0 10px rgba(27,42,74,0);}
+    100%{box-shadow:0 0 0 0 rgba(27,42,74,0);}
+  }
+  .spot.jump-highlight{animation:bayPulse 1s ease-out 2;}
+
+  /* ---------- legend ---------- */
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:22px;}
+  .legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-soft);}
+  .swatch{width:12px;height:12px;border-radius:2px;flex-shrink:0;}
+
+  /* ---------- warehouse plan ---------- */
+  /* single shared horizontal scroller so every row (and both sides) move together */
+  .plan-scroll{overflow-x:auto;padding-bottom:6px;}
+  .plan-scroll::-webkit-scrollbar{height:8px;}
+  .plan-scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
+  .plan{display:flex;flex-direction:column;width:max-content;min-width:100%;}
+
+  .side-block{display:flex;flex-direction:column;}
+  .row-block{margin-bottom:8px;}
+  .row-head{
+    display:flex;align-items:center;gap:8px;margin-bottom:6px;
+    position:sticky;left:0;width:fit-content;
+  }
+  .row-tag{
+    font-family:var(--font-display);
+    font-size:10.5px;font-weight:700;color:var(--ink-soft);
+    letter-spacing:.04em;text-transform:uppercase;
+  }
+  .row-actions{margin-left:auto;display:flex;gap:6px;}
+
+  .lane{
+    position:relative;
+    display:flex;
+    align-items:flex-end;
+    gap:9px;
+    padding:14px 10px 10px;
+    background:repeating-linear-gradient(90deg, var(--ink-faint) 0 10px, transparent 10px 20px);
+    background-size:100% 2px;
+    background-repeat:no-repeat;
+    background-position:top;
+    min-height:106px;
+  }
+
+  .aisle-bar{
+    display:flex;align-items:center;justify-content:center;gap:10px;
+    margin:6px 0;
+    padding:9px 0;
+    background:repeating-linear-gradient(90deg, var(--ink) 0 16px, transparent 16px 30px);
+    background-size:100% 2px;
+    background-position:center;
+    background-repeat:no-repeat;
+    position:relative;
+  }
+  .aisle-label{
+    background:var(--paper);
+    border:1.5px solid var(--ink);
+    color:var(--ink);
+    font-family:var(--font-display);
+    font-size:10.5px;
+    font-weight:700;
+    letter-spacing:.1em;
+    padding:3px 12px;
+    border-radius:2px;
+    z-index:1;
+  }
+
+  .side-toggle{
+    font-size:10.5px;color:var(--ink-faint);background:transparent;border:1px dashed var(--line);
+    border-radius:var(--radius);padding:2px 7px;cursor:pointer;font-family:var(--font-display);
+  }
+  .side-toggle:hover{color:var(--ink);border-color:var(--ink-faint);}
+
+  .spot{
+    flex-shrink:0;
+    border-radius:var(--radius);
+    cursor:pointer;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    padding:8px 8px 6px;
+    height:88px;
+    transition:transform .12s ease, box-shadow .12s ease;
+    border:1.5px solid var(--ink);
+    position:relative;
+  }
+  .spot:hover{transform:translateY(-2px);box-shadow:0 3px 8px rgba(27,42,74,.18);}
+
+  .spot.empty{
+    background:repeating-linear-gradient(135deg, transparent 0 6px, var(--paper-line) 6px 7px);
+    border-style:dashed;
+    border-color:var(--ink-faint);
+    align-items:center;
+    justify-content:center;
+  }
+  .spot.empty .plus{font-size:20px;color:var(--ink-faint);font-family:var(--font-display);}
+
+  .spot.gap{
+    background:repeating-linear-gradient(45deg, transparent 0 5px, var(--paper-line) 5px 6px);
+    border-style:dotted;
+    border-color:var(--ink-faint);
+    opacity:.6;
+    align-items:center;
+    justify-content:center;
+  }
+  .spot.gap:hover{opacity:.85;}
+  .gap-label{
+    font-size:9.5px;color:var(--ink-faint);text-align:center;line-height:1.3;
+    font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;
+  }
+
+  .spot-id{font-family:var(--font-display);font-size:10px;color:var(--ink-soft);}
+  .spot-label{font-family:var(--font-body);font-weight:600;font-size:12.5px;color:var(--ink);line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .spot-sub{font-size:10.5px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .spot-dim{font-family:var(--font-display);font-size:9.5px;color:var(--ink-faint);align-self:flex-end;}
+
+  .spot-del{
+    position:absolute;top:-8px;right:-8px;
+    width:18px;height:18px;border-radius:50%;
+    background:var(--card);border:1px solid var(--line);
+    color:var(--ink-soft);font-size:11px;line-height:1;
+    display:none;align-items:center;justify-content:center;
+    cursor:pointer;
+  }
+  .spot:hover .spot-del{display:flex;}
+
+  .add-spot-wrap{position:relative;flex-shrink:0;}
+  .add-spot-btn{
+    height:88px;width:50px;
+    border:1.5px dashed var(--ink-faint);
+    background:transparent;
+    border-radius:var(--radius);
+    color:var(--ink-faint);
+    font-size:22px;
+    cursor:pointer;
+    font-family:var(--font-display);
+  }
+  .add-spot-btn:hover{color:var(--ink);border-color:var(--ink);}
+
+  .add-menu{
+    position:absolute;bottom:100%;left:0;margin-bottom:6px;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:0 6px 18px rgba(27,42,74,.18);
+    padding:10px;z-index:20;width:220px;
+  }
+  .add-menu.below{ bottom:auto; top:100%; margin-bottom:0; margin-top:6px; }
+  .add-menu .type-row{margin-bottom:10px;}
+  .add-menu .type-chip{font-size:11px;padding:6px 3px;min-width:0;}
+  .add-menu-qty{
+    display:flex;align-items:center;gap:8px;
+    padding-top:8px;border-top:1px dashed var(--line);
+  }
+  .add-menu-qty label{font-size:11px;color:var(--ink-soft);font-weight:600;}
+  .add-menu-qty input{
+    width:52px;padding:5px 6px;border:1px solid var(--line);border-radius:var(--radius);
+    font-family:var(--font-body);font-size:13px;color:var(--ink);background:var(--paper);outline:none;
+  }
+  .add-menu-qty input:focus{border-color:var(--ink);}
+  .add-menu-qty .btn{margin-left:auto;}
+  .add-menu button{
+    width:100%;text-align:left;background:transparent;border:none;
+    padding:7px 8px;font-size:12.5px;color:var(--ink);cursor:pointer;
+    border-radius:2px;display:flex;align-items:center;gap:8px;font-family:var(--font-body);
+  }
+  .add-menu button:hover{background:var(--paper);}
+  .dot{width:9px;height:9px;border-radius:2px;flex-shrink:0;}
+
+  /* ---------- buttons ---------- */
+  .btn{
+    font-family:var(--font-body);
+    font-size:12.5px;
+    font-weight:600;
+    padding:6px 12px;
+    border-radius:var(--radius);
+    border:1px solid var(--ink);
+    background:var(--ink);
+    color:var(--paper);
+    cursor:pointer;
+  }
+  .btn:hover{opacity:.88;}
+  .btn.ghost{background:transparent;color:var(--ink-soft);border-color:var(--line);}
+  .btn.ghost:hover{color:var(--ink);border-color:var(--ink-soft);}
+  .btn.small{padding:4px 9px;font-size:11.5px;}
+  .btn.danger{background:var(--car);border-color:var(--car);}
+
+  .empty-state{
+    text-align:center;padding:50px 20px;color:var(--ink-soft);font-size:13.5px;
+  }
+  .empty-state b{color:var(--ink);}
+
+  /* ---------- modal ---------- */
+  .overlay{
+    position:fixed;inset:0;background:rgba(27,42,74,.35);
+    display:none;align-items:center;justify-content:center;z-index:100;
+    padding:20px;
+  }
+  .overlay.show{display:flex;}
+  .modal{
+    background:var(--card);border-radius:6px;border:1px solid var(--line);
+    width:340px;max-width:100%;padding:20px;
+    box-shadow:0 20px 50px rgba(27,42,74,.3);
+  }
+  .modal h3{margin:0 0 4px;font-family:var(--font-display);font-size:15px;color:var(--ink);}
+  .modal .sub{font-size:11.5px;color:var(--ink-soft);margin-bottom:16px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:11px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px;}
+  .field input, .field textarea, .field select{
+    width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:var(--radius);
+    font-family:var(--font-body);font-size:13px;color:var(--ink);background:var(--paper);
+    outline:none;
+  }
+  .field input:focus, .field textarea:focus, .field select:focus{border-color:var(--ink);}
+  .field textarea{resize:vertical;min-height:50px;}
+  .modal-actions{display:flex;gap:8px;margin-top:18px;justify-content:flex-end;}
+  .type-row{display:flex;gap:6px;flex-wrap:wrap;}
+  .type-chip{
+    flex:1;min-width:70px;text-align:center;padding:7px 4px;border-radius:var(--radius);
+    border:1.5px solid var(--line);font-size:11.5px;font-weight:600;cursor:pointer;color:var(--ink-soft);
+  }
+  .type-chip.active{border-color:var(--ink);color:var(--ink);}
+
+  .status-line{font-size:11px;color:var(--ink-faint);text-align:center;margin-top:14px;font-family:var(--font-display);}
+
+  /* ---------- manage types modal ---------- */
+  .modal.wide{width:400px;}
+  .type-manage-row{
+    display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--paper-line);
+  }
+  .type-manage-row input[type="color"]{
+    width:26px;height:26px;padding:0;border:1px solid var(--line);border-radius:4px;cursor:pointer;flex-shrink:0;background:none;
+  }
+  .type-manage-row .tm-label{
+    flex:1;min-width:0;border:1px solid var(--line);border-radius:var(--radius);padding:5px 7px;
+    font-family:var(--font-body);font-size:12.5px;color:var(--ink);background:var(--paper);outline:none;
+  }
+  .type-manage-row .tm-label:focus{border-color:var(--ink);}
+  .type-manage-row .tm-length{
+    width:50px;border:1px solid var(--line);border-radius:var(--radius);padding:5px 6px;
+    font-family:var(--font-body);font-size:12px;color:var(--ink);background:var(--paper);outline:none;flex-shrink:0;
+  }
+  .type-manage-row .tm-length:focus{border-color:var(--ink);}
+  .type-manage-row .tm-usage{font-size:10px;color:var(--ink-faint);width:52px;flex-shrink:0;text-align:right;font-family:var(--font-display);}
+  .type-manage-row .tm-del{
+    flex-shrink:0;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:transparent;
+    color:var(--ink-soft);font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  }
+  .type-manage-row .tm-del:disabled{opacity:.3;cursor:not-allowed;}
+  .type-manage-row .tm-del:not(:disabled):hover{border-color:var(--car);color:var(--car);}
+  .add-type-row{
+    display:flex;align-items:center;gap:8px;padding-top:12px;margin-top:6px;border-top:1.5px dashed var(--line);
+  }
+</style>
+</head>
+<body>
+
+
+<div class="sheet" id="sheet">
+  <div class="titleblock">
+    <div class="titleblock-left">
+      <div class="eyebrow">Site plan — vehicle storage</div>
+      <input id="facilityName" value="Storage Sites" />
+      <div class="scale-note">Bays scale to vehicle length · click any bay to assign or edit</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+      <div class="stats" id="stats"></div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn ghost small" id="manageTypesBtn">Manage types</button>
+        <button class="btn ghost small" id="exportBtn">Export data</button>
+        <button class="btn ghost small" id="importBtn">Import data</button>
+        <input type="file" id="importFile" accept="application/json" style="display:none" />
+      </div>
+    </div>
+  </div>
+
+  <div class="search-wrap" id="searchWrap">
+    <input type="text" id="searchInput" placeholder="Find a person, name or registration — across all warehouses…" autocomplete="off" />
+    <div class="search-results" id="searchResults"></div>
+  </div>
+
+  <div class="wh-tabs" id="whTabs"></div>
+  <div class="global-stat-line" id="globalStatLine"></div>
+  <div class="wh-purpose" id="whPurpose"></div>
+
+  <div class="legend" id="legend"></div>
+
+  <div id="plan"></div>
+
+  <div class="status-line" id="statusLine">loading…</div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal" id="modalBody"></div>
+</div>
+
+<script>
+(function(){
+  const DEFAULT_TYPES = {
+    car:           { label:'Car',             length:4.5, color:'#B54834' },
+    campervan:     { label:'Campervan',       length:6.0, color:'#2E6E62' },
+    caravan:       { label:'Caravan',         length:7.0, color:'#47598C' },
+    trailer:       { label:'Trailer',         length:5.0, color:'#B4831F' },
+    foldingTrailer:{ label:'Folding Trailer', length:4.0, color:'#6E5B8C' },
+  };
+  // TYPES always points at state.vehicleTypes once state is loaded (see bindTypes()),
+  // so edits made through "Manage types" are visible everywhere without extra plumbing.
+  let TYPES = DEFAULT_TYPES;
+  function bindTypes(){ TYPES = state.vehicleTypes; }
+  function hexAlpha(hex, alpha){
+    const a = Math.round(alpha * 255).toString(16).padStart(2,'0');
+    return (hex.length === 7 ? hex : '#999999') + a;
+  }
+  function slugify(label, existingKeys){
+    let base = label.trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'type';
+    let key = base, n = 1;
+    while(existingKeys.includes(key)) key = `${base}-${++n}`;
+    return key;
+  }
+  const PX_PER_M = 15.5;
+  const MIN_W = 56;
+  const STORAGE_KEY = 'yard-plan-state-v2';
+
+  function uid(){ return Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-4); }
+
+  function emptyRow(){ return { id: uid(), spots: [] }; }
+
+  function defaultWarehouse(cfg){
+    return {
+      id: uid(),
+      name: cfg.name,
+      purpose: cfg.purpose || '',
+      recommended: cfg.recommended || null,
+      left: Array.from({length: cfg.left}, emptyRow),
+      right: Array.from({length: cfg.right}, emptyRow),
+    };
+  }
+
+  function defaultState(){
+    const warehouses = [
+      defaultWarehouse({ name:'Warehouse 1', left:1, right:1, purpose:'Caravans & folding trailers', recommended:['caravan','foldingTrailer'] }),
+      defaultWarehouse({ name:'Warehouse 2', left:1, right:1, purpose:'Caravans & folding trailers', recommended:['caravan','foldingTrailer'] }),
+      defaultWarehouse({ name:'Warehouse 3', left:1, right:1, purpose:'Cars, caravans & campervans', recommended:['car','caravan','campervan'] }),
+      defaultWarehouse({ name:'Warehouse 4', left:2, right:2 }),
+      defaultWarehouse({ name:'Warehouse 5', left:2, right:1 }),
+    ];
+    return {
+      facilityName: 'Storage Sites',
+      warehouses,
+      activeWarehouseId: warehouses[0].id,
+      vehicleTypes: JSON.parse(JSON.stringify(DEFAULT_TYPES)),
+    };
+  }
+
+  function spotDefault(type, seq){
+    return { id: uid(), type, length: TYPES[type].length, occupant: null, seq, removed: false };
+  }
+  function nextSeqFor(row){
+    return row.spots.reduce((max, s) => Math.max(max, s.seq || 0), 0) + 1;
+  }
+
+  let state = null;
+  let saveTimer = null;
+
+  function migrate(loaded){
+    if(!loaded || !Array.isArray(loaded.warehouses)) return null;
+    if(!loaded.vehicleTypes || typeof loaded.vehicleTypes !== 'object'){
+      loaded.vehicleTypes = JSON.parse(JSON.stringify(DEFAULT_TYPES));
+    }
+    loaded.warehouses.forEach(w => {
+      // upgrade a pre-side/row save (single "aisles" array) into left/right rows
+      if(Array.isArray(w.aisles) && !Array.isArray(w.left)){
+        w.left = [{ id: uid(), spots: w.aisles.flatMap(a => a.spots) }];
+        w.right = [emptyRow()];
+        delete w.aisles;
+      }
+      if(!Array.isArray(w.left)) w.left = [emptyRow()];
+      if(!Array.isArray(w.right)) w.right = [emptyRow()];
+      if(typeof w.purpose !== 'string') w.purpose = '';
+      [...w.left, ...w.right].forEach(row => {
+        row.spots.forEach((s, i) => {
+          if(typeof s.seq !== 'number') s.seq = i + 1;
+          if(typeof s.removed !== 'boolean') s.removed = false;
+        });
+      });
+    });
+    return loaded;
+  }
+
+  // Uses window.storage when running inside Claude.ai (needs a connection).
+  // Falls back to the browser's own localStorage when opened as a standalone
+  // file with no connection at all — that's what makes offline use possible.
+  const hasCloudStorage = typeof window.storage !== 'undefined' && window.storage;
+
+  async function load(){
+    try{
+      if(hasCloudStorage){
+        const res = await window.storage.get(STORAGE_KEY, false);
+        state = res && res.value ? migrate(JSON.parse(res.value)) : null;
+      } else {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        state = raw ? migrate(JSON.parse(raw)) : null;
+      }
+      if(!state) state = defaultState();
+      if(!state.warehouses.find(w => w.id === state.activeWarehouseId)){
+        state.activeWarehouseId = state.warehouses[0]?.id;
+      }
+    }catch(e){
+      state = defaultState();
+    }
+    bindTypes();
+    render();
+    setStatus(hasCloudStorage ? 'saved' : 'saved to this browser (offline)');
+  }
+
+  function save(){
+    setStatus('saving…');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      try{
+        if(hasCloudStorage){
+          const ok = await window.storage.set(STORAGE_KEY, JSON.stringify(state), false);
+          setStatus(ok ? 'saved' : 'save failed — changes kept in this session only');
+        } else {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          setStatus('saved to this browser (offline)');
+        }
+      }catch(e){
+        setStatus('save failed — changes kept in this session only');
+      }
+    }, 250);
+  }
+
+  function setStatus(t){
+    document.getElementById('statusLine').textContent = t;
+  }
+
+  function widthFor(length){
+    return Math.max(MIN_W, Math.round(length * PX_PER_M));
+  }
+
+  function activeWarehouse(){
+    return state.warehouses.find(w => w.id === state.activeWarehouseId) || state.warehouses[0];
+  }
+
+  function warehouseRows(w){
+    return [...w.left, ...w.right];
+  }
+  function warehouseSpots(w){
+    return warehouseRows(w).flatMap(r => r.spots).filter(s => !s.removed);
+  }
+  function allSpots(){
+    return warehouseSpots(activeWarehouse());
+  }
+  function allSpotsGlobal(){
+    return state.warehouses.flatMap(w => warehouseSpots(w));
+  }
+  function findRow(rowId){
+    const w = activeWarehouse();
+    return warehouseRows(w).find(r => r.id === rowId);
+  }
+
+  function render(){
+    document.getElementById('facilityName').value = state.facilityName;
+    renderTabs();
+    renderStats();
+    renderGlobalStatLine();
+    renderPurpose();
+    renderLegend();
+    renderPlan();
+  }
+
+  function renderTabs(){
+    const el = document.getElementById('whTabs');
+    el.innerHTML = '';
+    state.warehouses.forEach(w => {
+      const spots = warehouseSpots(w);
+      const occ = spots.filter(s => s.occupant).length;
+      const tab = document.createElement('div');
+      tab.className = 'wh-tab' + (w.id === state.activeWarehouseId ? ' active' : '');
+      tab.innerHTML = `
+        <input class="wh-tab-name" value="${escapeAttr(w.name)}" data-wh-name="${w.id}" size="${Math.max(6, w.name.length)}" />
+        <span class="wh-count">${occ}/${spots.length}</span>
+        <span class="wh-tab-del" data-del-wh="${w.id}" title="Remove warehouse">✕</span>
+      `;
+      tab.addEventListener('click', (e) => {
+        if(e.target.closest('[data-del-wh]') || e.target.tagName === 'INPUT') return;
+        state.activeWarehouseId = w.id;
+        render();
+      });
+      el.appendChild(tab);
+    });
+    const addBtn = document.createElement('button');
+    addBtn.className = 'wh-tab-add';
+    addBtn.id = 'addWarehouseBtn';
+    addBtn.textContent = '+';
+    addBtn.title = 'Add warehouse';
+    el.appendChild(addBtn);
+  }
+
+  function renderGlobalStatLine(){
+    const spots = allSpotsGlobal();
+    const occ = spots.filter(s => s.occupant).length;
+    document.getElementById('globalStatLine').textContent =
+      `All ${state.warehouses.length} warehouses: ${occ}/${spots.length} bays occupied`;
+  }
+
+  function renderPurpose(){
+    const w = activeWarehouse();
+    const el = document.getElementById('whPurpose');
+    if(!w || !w.purpose){ el.innerHTML = ''; return; }
+    el.innerHTML = `<b>${escapeHtml(w.name)}</b> — ${escapeHtml(w.purpose)}`;
+  }
+
+  function renderStats(){
+    const spots = allSpots();
+    const total = spots.length;
+    const occupied = spots.filter(s => s.occupant).length;
+    const free = total - occupied;
+    const el = document.getElementById('stats');
+    el.innerHTML = '';
+    [['Bays', total], ['Occupied', occupied], ['Free', free]].forEach(([l,n]) => {
+      const d = document.createElement('div');
+      d.className = 'stat';
+      d.innerHTML = `<div class="n">${n}</div><div class="l">${l}</div>`;
+      el.appendChild(d);
+    });
+  }
+
+  function renderLegend(){
+    const el = document.getElementById('legend');
+    el.innerHTML = Object.entries(TYPES).map(([key,t]) =>
+      `<div class="legend-item"><span class="swatch" style="background:${t.color}"></span>${t.label}</div>`
+    ).join('') + `<div class="legend-item"><span class="swatch" style="background:var(--paper-line)"></span>Empty bay</div>`;
+  }
+
+  function rowLabel(side, idx){
+    if(idx === 0) return `${side} · row 1 (near aisle)`;
+    return `${side} · row ${idx+1} (back)`;
+  }
+
+  function renderPlan(){
+    const wrap = document.getElementById('plan');
+    wrap.innerHTML = '';
+    const w = activeWarehouse();
+    if(!w) return;
+
+    const plan = document.createElement('div');
+    plan.className = 'plan';
+
+    // right side, farthest row first so it sits furthest from the aisle bar
+    [...w.right].reverse().forEach((row, i) => {
+      const realIdx = w.right.length - 1 - i;
+      plan.appendChild(renderRowBlock(row, 'Right', realIdx, w.right.length, 'right'));
+    });
+
+    // aisle
+    const aisle = document.createElement('div');
+    aisle.className = 'aisle-bar';
+    aisle.innerHTML = `<span class="aisle-label">AISLE</span>`;
+    plan.appendChild(aisle);
+
+    // left side, row 1 nearest the aisle first
+    w.left.forEach((row, i) => {
+      plan.appendChild(renderRowBlock(row, 'Left', i, w.left.length, 'left'));
+    });
+
+    wrap.appendChild(plan);
+    syncLanes();
+  }
+
+  // Keep every row's horizontal scroll in lockstep, so e.g. R6-2 (back row)
+  // always sits directly behind R6-1 (front row) as you scroll left/right.
+  function syncLanes(){
+    const lanes = Array.from(document.querySelectorAll('#plan .lane'));
+    let syncing = false;
+    lanes.forEach(lane => {
+      lane.addEventListener('scroll', () => {
+        if(syncing) return;
+        syncing = true;
+        const x = lane.scrollLeft;
+        lanes.forEach(other => { if(other !== lane) other.scrollLeft = x; });
+        syncing = false;
+      });
+    });
+  }
+
+  function renderRowBlock(row, sideName, idx, sideCount, sideKey){
+    const block = document.createElement('div');
+    block.className = 'row-block';
+
+    const head = document.createElement('div');
+    head.className = 'row-head';
+    let actionsHtml = `<span class="add-spot-wrap"><button class="btn ghost small" data-add-spot="${row.id}">+ Add bay</button></span>`;
+    if(idx === sideCount - 1){
+      // controls live on the outermost (back) row of each side
+      if(sideCount > 1){
+        actionsHtml += `<button class="side-toggle" data-remove-row="${sideKey}">− remove back row</button>`;
+      } else {
+        actionsHtml += `<button class="side-toggle" data-add-row="${sideKey}">+ add second row</button>`;
+      }
+    }
+    const activeCount = row.spots.filter(s => !s.removed).length;
+    const removedCount = row.spots.length - activeCount;
+    const countLabel = `${activeCount} bay${activeCount===1?'':'s'}` + (removedCount ? ` · ${removedCount} removed` : '');
+    head.innerHTML = `
+      <span class="row-tag">${rowLabel(sideName, idx)}</span>
+      <span style="font-size:10.5px;color:var(--ink-faint);font-family:var(--font-display)">${countLabel}</span>
+      <div class="row-actions">${actionsHtml}</div>
+    `;
+    block.appendChild(head);
+
+    const lane = document.createElement('div');
+    lane.className = 'lane';
+    row.spots.forEach((spot, sIdx) => {
+      lane.appendChild(renderSpot(row, spot, sideName, idx, sIdx));
+    });
+    lane.appendChild(renderAddSpotControl(row));
+    block.appendChild(lane);
+
+    return block;
+  }
+
+  function autoTag(sideName, seq){
+    return `${sideName[0]}${seq}`;
+  }
+  function displayTag(spot, sideName){
+    return (spot.label && spot.label.trim()) ? spot.label.trim() : autoTag(sideName, spot.seq);
+  }
+
+  function renderSpot(row, spot, sideName, rowIdx, sIdx){
+    const el = document.createElement('div');
+    const w = widthFor(spot.length);
+    el.style.width = w + 'px';
+    el.setAttribute('data-spot-id', spot.id);
+    const tag = displayTag(spot, sideName);
+
+    if(spot.removed){
+      el.className = 'spot gap';
+      el.title = 'Removed bay — click to reuse this spot';
+      el.innerHTML = `
+        <div class="spot-del" data-hard-remove="${spot.id}" title="Delete this slot permanently">✕</div>
+        <span class="spot-id" style="align-self:flex-start">${escapeHtml(tag)}</span>
+        <span class="gap-label">removed<br/>tap to reuse</span>
+      `;
+      el.addEventListener('click', (e) => {
+        if(e.target.closest('[data-hard-remove]')) return;
+        spot.removed = false;
+        render(); save();
+      });
+      return el;
+    }
+
+    if(spot.occupant){
+      const t = TYPES[spot.type] || { color:'#7A7A7A', label:'Unknown' };
+      el.className = 'spot';
+      el.style.background = hexAlpha(t.color, 0.16);
+      el.style.borderColor = t.color;
+      el.innerHTML = `
+        <div class="spot-del" data-clear="${spot.id}" title="Clear bay">✕</div>
+        <div class="spot-id">${escapeHtml(tag)}</div>
+        <div>
+          <div class="spot-label">${escapeHtml(spot.occupant.name || 'Unnamed')}</div>
+          <div class="spot-sub">${escapeHtml(spot.occupant.reg || '')}</div>
+        </div>
+        <div class="spot-dim">${spot.length}m</div>
+      `;
+    } else {
+      el.className = 'spot empty';
+      el.innerHTML = `
+        <div class="spot-del" data-remove-spot="${spot.id}" title="Remove this bay">✕</div>
+        <span class="plus">+</span>
+        ${spot.label ? `<div class="spot-id" style="align-self:flex-start">${escapeHtml(spot.label)}</div>` : ''}
+      `;
+    }
+    el.addEventListener('click', (e) => {
+      if(e.target.closest('[data-clear]') || e.target.closest('[data-remove-spot]')) return;
+      openSpotModal(row, spot, sideName, rowIdx, sIdx);
+    });
+    return el;
+  }
+
+  function renderAddSpotControl(row){
+    const wrap = document.createElement('div');
+    wrap.className = 'add-spot-wrap';
+    wrap.innerHTML = `<button class="add-spot-btn" data-add-spot="${row.id}">+</button>`;
+    return wrap;
+  }
+
+  function escapeHtml(s){
+    return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function escapeAttr(s){ return escapeHtml(s); }
+
+  function typeOrderFor(w){
+    const keys = Object.keys(TYPES);
+    if(!w.recommended) return keys;
+    return [...w.recommended, ...keys.filter(k => !w.recommended.includes(k))];
+  }
+
+  // ---------- modal: add spot type + quantity picker ----------
+  function openAddSpotMenu(rowId, anchorBtn){
+    closeAnyMenu();
+    const w = activeWarehouse();
+    const order = typeOrderFor(w);
+    const row = findRow(rowId);
+    let selectedType = row.spots.length ? row.spots[row.spots.length - 1].type : order[0];
+
+    const menu = document.createElement('div');
+    menu.className = 'add-menu' + (anchorBtn.classList.contains('add-spot-btn') ? '' : ' below');
+    menu.innerHTML = `
+      <div class="type-row" id="quickTypeRow">
+        ${order.map(key => {
+          const t = TYPES[key];
+          const active = key===selectedType;
+          const styleAttr = active ? ` style="border-color:${t.color};background:${hexAlpha(t.color,0.14)};color:${t.color}"` : '';
+          return `<div class="type-chip ${active?'active':''}" data-qtype="${key}"${styleAttr}>${escapeHtml(t.label)}</div>`;
+        }).join('')}
+      </div>
+      <div class="add-menu-qty">
+        <label>Qty</label>
+        <input type="number" id="quickQty" min="1" max="20" value="1" />
+        <button class="btn small" id="quickAddBtn">Add</button>
+      </div>
+    `;
+    anchorBtn.parentElement.appendChild(menu);
+
+    menu.querySelectorAll('[data-qtype]').forEach(chip => {
+      chip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectedType = chip.getAttribute('data-qtype');
+        menu.querySelectorAll('[data-qtype]').forEach(c => {
+          c.classList.remove('active');
+          c.style.borderColor = ''; c.style.background = ''; c.style.color = '';
+        });
+        const t = TYPES[selectedType];
+        chip.classList.add('active');
+        chip.style.borderColor = t.color;
+        chip.style.background = hexAlpha(t.color, 0.14);
+        chip.style.color = t.color;
+      });
+    });
+
+    menu.querySelector('#quickQty').addEventListener('click', e => e.stopPropagation());
+
+    menu.querySelector('#quickAddBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const qtyInput = menu.querySelector('#quickQty');
+      const qty = Math.max(1, Math.min(20, parseInt(qtyInput.value, 10) || 1));
+      const targetRow = findRow(rowId);
+      for(let i = 0; i < qty; i++) targetRow.spots.push(spotDefault(selectedType, nextSeqFor(targetRow)));
+      closeAnyMenu();
+      render(); save();
+    });
+  }
+  function closeAnyMenu(){
+    document.querySelectorAll('.add-menu').forEach(m => m.remove());
+  }
+  // single delegated listener: closes an open add-menu on any click outside it
+  document.addEventListener('click', (e) => {
+    if(!e.target.closest('.add-menu') && !e.target.closest('[data-add-spot]')){
+      closeAnyMenu();
+    }
+  });
+
+  // ---------- modal: assign / edit occupant ----------
+  function openSpotModal(row, spot, sideName, rowIdx, sIdx){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    const isEditing = !!spot.occupant;
+    const w = activeWarehouse();
+    const order = typeOrderFor(w);
+    const auto = autoTag(sideName, spot.seq);
+
+    body.innerHTML = `
+      <h3>${isEditing ? 'Edit bay' : 'Add / edit bay'}</h3>
+      <div class="sub">Bay type sets the footprint shown on the plan.</div>
+      <div class="field">
+        <label>Bay name / number (optional)</label>
+        <input type="text" id="fLabel" value="${escapeAttr(spot.label || '')}" placeholder="${escapeAttr(auto)}" />
+      </div>
+      <div class="field">
+        <label>Vehicle type &nbsp;<a href="#" id="manageTypesLink" style="font-weight:400;text-transform:none;letter-spacing:0;">manage types</a></label>
+        <div class="type-row" id="typeRow">
+          ${order.map(key => {
+            const t = TYPES[key];
+            const active = spot.type===key;
+            const styleAttr = active ? ` style="border-color:${t.color};background:${hexAlpha(t.color,0.14)};color:${t.color}"` : '';
+            return `<div class="type-chip ${active?'active':''}" data-type="${key}"${styleAttr}>${escapeHtml(t.label)}</div>`;
+          }).join('')}
+        </div>
+      </div>
+      <div class="field">
+        <label>Length (m)</label>
+        <input type="number" id="fLength" min="2" max="15" step="0.1" value="${spot.length}" />
+      </div>
+      <div class="field">
+        <label>Owner / customer name</label>
+        <input type="text" id="fName" value="${escapeAttr(spot.occupant?.name || '')}" placeholder="e.g. J. Bakker" />
+      </div>
+      <div class="field">
+        <label>Registration / reference</label>
+        <input type="text" id="fReg" value="${escapeAttr(spot.occupant?.reg || '')}" placeholder="e.g. 12-AB-34" />
+      </div>
+      <div class="field">
+        <label>Notes</label>
+        <textarea id="fNotes" placeholder="Keys location, contract end date, etc.">${escapeHtml(spot.occupant?.notes || '')}</textarea>
+      </div>
+      <div class="modal-actions">
+        ${isEditing ? '<button class="btn danger" id="clearBtn">Clear occupant</button>' : ''}
+        <button class="btn ghost" id="cancelBtn">Cancel</button>
+        <button class="btn" id="saveBtn">Save</button>
+      </div>
+    `;
+
+    let selectedType = spot.type;
+    body.querySelectorAll('.type-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        selectedType = chip.getAttribute('data-type');
+        body.querySelectorAll('.type-chip').forEach(c => {
+          c.classList.remove('active');
+          c.style.borderColor = ''; c.style.background = ''; c.style.color = '';
+        });
+        const t = TYPES[selectedType];
+        chip.classList.add('active');
+        chip.style.borderColor = t.color;
+        chip.style.background = hexAlpha(t.color, 0.14);
+        chip.style.color = t.color;
+        document.getElementById('fLength').value = t.length;
+      });
+    });
+
+    document.getElementById('manageTypesLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      closeModal();
+      openManageTypesModal();
+    });
+
+    overlay.classList.add('show');
+
+    document.getElementById('cancelBtn').addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
+
+    if(isEditing){
+      document.getElementById('clearBtn').addEventListener('click', () => {
+        spot.occupant = null;
+        closeModal(); render(); save();
+      });
+    }
+
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      const label = document.getElementById('fLabel').value.trim();
+      const name = document.getElementById('fName').value.trim();
+      const reg = document.getElementById('fReg').value.trim();
+      const notes = document.getElementById('fNotes').value.trim();
+      const length = parseFloat(document.getElementById('fLength').value) || TYPES[selectedType].length;
+
+      spot.type = selectedType;
+      spot.length = length;
+      spot.label = label;
+      spot.occupant = (name || reg || notes) ? { name, reg, notes } : null;
+
+      closeModal(); render(); save();
+    });
+  }
+
+  function closeModal(){
+    document.getElementById('overlay').classList.remove('show');
+  }
+
+  // ---------- modal: manage vehicle types ----------
+  function typeUsageCount(key){
+    let n = 0;
+    state.warehouses.forEach(w => {
+      warehouseRows(w).forEach(r => r.spots.forEach(s => { if(s.type === key) n++; }));
+    });
+    return n;
+  }
+
+  function openManageTypesModal(){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal wide';
+
+    function renderRows(){
+      const keys = Object.keys(TYPES);
+      const listHtml = keys.map(key => {
+        const t = TYPES[key];
+        const usage = typeUsageCount(key);
+        const canDelete = usage === 0 && keys.length > 1;
+        return `
+          <div class="type-manage-row" data-row="${key}">
+            <input type="color" class="tm-color" data-key="${key}" value="${t.color}" />
+            <input type="text" class="tm-label" data-key="${key}" value="${escapeAttr(t.label)}" />
+            <input type="number" class="tm-length" data-key="${key}" value="${t.length}" min="1" max="20" step="0.1" title="Default length (m)" />
+            <span class="tm-usage">${usage} bay${usage===1?'':'s'}</span>
+            <button class="tm-del" data-del-type="${key}" ${canDelete?'':'disabled'} title="${canDelete?'Remove this type':'Cannot remove: still in use, or the only type left'}">✕</button>
+          </div>
+        `;
+      }).join('');
+
+      body.innerHTML = `
+        <h3>Manage vehicle types</h3>
+        <div class="sub">Rename existing types, tweak colors and default lengths, or add your own storage categories.</div>
+        <div id="typesList">${listHtml}</div>
+        <div class="add-type-row">
+          <input type="color" id="newTypeColor" value="#5B7A8C" />
+          <input type="text" class="tm-label" id="newTypeLabel" placeholder="e.g. Boat trailer" style="flex:1;" />
+          <input type="number" class="tm-length" id="newTypeLength" placeholder="5" min="1" max="20" step="0.1" title="Default length (m)" />
+          <button class="btn small" id="addTypeBtn">+ Add</button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" id="doneTypesBtn">Done</button>
+        </div>
+      `;
+
+      body.querySelectorAll('.tm-label[data-key]').forEach(inp => {
+        inp.addEventListener('change', () => {
+          const key = inp.getAttribute('data-key');
+          TYPES[key].label = inp.value.trim() || TYPES[key].label;
+          save();
+        });
+      });
+      body.querySelectorAll('.tm-color').forEach(inp => {
+        inp.addEventListener('input', () => {
+          TYPES[inp.getAttribute('data-key')].color = inp.value;
+          save();
+        });
+      });
+      body.querySelectorAll('.tm-length[data-key]').forEach(inp => {
+        inp.addEventListener('change', () => {
+          const key = inp.getAttribute('data-key');
+          const v = parseFloat(inp.value);
+          if(v > 0) TYPES[key].length = v;
+          save();
+        });
+      });
+      body.querySelectorAll('[data-del-type]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if(btn.disabled) return;
+          const key = btn.getAttribute('data-del-type');
+          delete TYPES[key];
+          state.warehouses.forEach(w => {
+            if(Array.isArray(w.recommended)) w.recommended = w.recommended.filter(k => k !== key);
+          });
+          save();
+          renderRows();
+        });
+      });
+
+      body.querySelector('#addTypeBtn').addEventListener('click', () => {
+        const labelInp = body.querySelector('#newTypeLabel');
+        const colorInp = body.querySelector('#newTypeColor');
+        const lengthInp = body.querySelector('#newTypeLength');
+        const label = labelInp.value.trim();
+        if(!label){ labelInp.focus(); return; }
+        const length = parseFloat(lengthInp.value) || 5;
+        const key = slugify(label, Object.keys(TYPES));
+        TYPES[key] = { label, color: colorInp.value, length };
+        save();
+        renderRows();
+      });
+
+      body.querySelector('#doneTypesBtn').addEventListener('click', () => {
+        body.className = 'modal';
+        closeModal();
+        render();
+      });
+    }
+
+    renderRows();
+    overlay.classList.add('show');
+    overlay.addEventListener('click', (e) => {
+      if(e.target === overlay){ body.className = 'modal'; closeModal(); render(); }
+    }, { once:true });
+  }
+
+  document.getElementById('manageTypesBtn').addEventListener('click', openManageTypesModal);
+
+  // ---------- global click handling ----------
+  document.addEventListener('click', (e) => {
+    const addSpotBtn = e.target.closest('[data-add-spot]');
+    if(addSpotBtn){
+      e.stopPropagation();
+      openAddSpotMenu(addSpotBtn.getAttribute('data-add-spot'), addSpotBtn);
+      return;
+    }
+    const clearBtn = e.target.closest('[data-clear]');
+    if(clearBtn){
+      const id = clearBtn.getAttribute('data-clear');
+      const spot = allSpots().find(s => s.id === id);
+      if(spot){ spot.occupant = null; render(); save(); }
+      return;
+    }
+    const removeSpotBtn = e.target.closest('[data-remove-spot]');
+    if(removeSpotBtn){
+      const id = removeSpotBtn.getAttribute('data-remove-spot');
+      warehouseRows(activeWarehouse()).forEach(r => {
+        const s = r.spots.find(sp => sp.id === id);
+        if(s){ s.removed = true; s.occupant = null; }
+      });
+      render(); save();
+      return;
+    }
+    const hardRemoveBtn = e.target.closest('[data-hard-remove]');
+    if(hardRemoveBtn){
+      const id = hardRemoveBtn.getAttribute('data-hard-remove');
+      warehouseRows(activeWarehouse()).forEach(r => { r.spots = r.spots.filter(s => s.id !== id); });
+      render(); save();
+      return;
+    }
+    const addRowBtn = e.target.closest('[data-add-row]');
+    if(addRowBtn){
+      const side = addRowBtn.getAttribute('data-add-row');
+      activeWarehouse()[side].push(emptyRow());
+      render(); save();
+      return;
+    }
+    const removeRowBtn = e.target.closest('[data-remove-row]');
+    if(removeRowBtn){
+      const side = removeRowBtn.getAttribute('data-remove-row');
+      const w = activeWarehouse();
+      if(w[side].length > 1) w[side].pop();
+      render(); save();
+      return;
+    }
+    const delWhBtn = e.target.closest('[data-del-wh]');
+    if(delWhBtn){
+      e.stopPropagation();
+      if(state.warehouses.length <= 1) return;
+      const id = delWhBtn.getAttribute('data-del-wh');
+      const removingActive = id === state.activeWarehouseId;
+      state.warehouses = state.warehouses.filter(w => w.id !== id);
+      if(removingActive) state.activeWarehouseId = state.warehouses[0].id;
+      render(); save();
+      return;
+    }
+    const addWhBtn = e.target.closest('#addWarehouseBtn');
+    if(addWhBtn){
+      const wh = defaultWarehouse({ name:`Warehouse ${state.warehouses.length + 1}`, left:1, right:1 });
+      state.warehouses.push(wh);
+      state.activeWarehouseId = wh.id;
+      render(); save();
+      return;
+    }
+  });
+
+  document.getElementById('facilityName').addEventListener('input', (e) => {
+    state.facilityName = e.target.value;
+    save();
+  });
+
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = `${(state.facilityName || 'yard-plan').replace(/[^a-z0-9]+/gi,'-').toLowerCase()}-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById('importBtn').addEventListener('click', () => {
+    document.getElementById('importFile').click();
+  });
+
+  document.getElementById('importFile').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try{
+        const parsed = migrate(JSON.parse(reader.result));
+        if(!parsed) throw new Error('bad file');
+        state = parsed;
+        if(!state.warehouses.find(w => w.id === state.activeWarehouseId)){
+          state.activeWarehouseId = state.warehouses[0]?.id;
+        }
+        bindTypes();
+        render(); save();
+      }catch(err){
+        setStatus('import failed — file was not a valid export');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  document.addEventListener('change', (e) => {
+    if(e.target.hasAttribute('data-wh-name')){
+      const wh = state.warehouses.find(w => w.id === e.target.getAttribute('data-wh-name'));
+      if(wh){ wh.name = e.target.value; render(); save(); }
+    }
+  });
+
+  // ---------- search ----------
+  function searchAll(query){
+    const q = query.trim().toLowerCase();
+    if(!q) return [];
+    const results = [];
+    state.warehouses.forEach(w => {
+      [['left','Left'],['right','Right']].forEach(([key, sideName]) => {
+        w[key].forEach((row, rowIdx) => {
+          row.spots.forEach((spot, sIdx) => {
+            if(spot.removed) return;
+            const occ = spot.occupant;
+            const hay = [
+              occ?.name || '', occ?.reg || '', occ?.notes || '',
+              spot.label || '', displayTag(spot, sideName)
+            ].join(' ').toLowerCase();
+            if(hay.includes(q)){
+              results.push({ warehouse: w, spot, sideName, rowIdx, sIdx });
+            }
+          });
+        });
+      });
+    });
+    return results.slice(0, 20);
+  }
+
+  function renderSearchResults(results, query){
+    const el = document.getElementById('searchResults');
+    if(!query.trim()){
+      el.classList.remove('show');
+      el.innerHTML = '';
+      return;
+    }
+    if(results.length === 0){
+      el.innerHTML = `<div class="search-empty">No matches for "${escapeHtml(query)}"</div>`;
+      el.classList.add('show');
+      return;
+    }
+    el.innerHTML = results.map((r, i) => {
+      const t = TYPES[r.spot.type];
+      const tag = displayTag(r.spot, r.sideName);
+      const who = r.spot.occupant?.name || (r.spot.label ? '(unassigned bay)' : 'Unassigned');
+      const reg = r.spot.occupant?.reg || '';
+      return `
+        <div class="search-result" data-result="${i}">
+          <span class="dot" style="background:${t.color}"></span>
+          <div class="search-result-main">
+            <div class="search-result-name">${escapeHtml(who)}${reg ? ' · ' + escapeHtml(reg) : ''}</div>
+            <div class="search-result-meta">${escapeHtml(r.warehouse.name)} · bay ${escapeHtml(tag)} · ${t.label}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+    el.classList.add('show');
+
+    el.querySelectorAll('[data-result]').forEach(node => {
+      node.addEventListener('click', () => {
+        const r = results[parseInt(node.getAttribute('data-result'), 10)];
+        jumpToSpot(r.warehouse.id, r.spot.id);
+      });
+    });
+  }
+
+  function jumpToSpot(warehouseId, spotId){
+    state.activeWarehouseId = warehouseId;
+    render();
+    document.getElementById('searchResults').classList.remove('show');
+    document.getElementById('searchInput').value = '';
+    setTimeout(() => {
+      const el = document.querySelector(`[data-spot-id="${spotId}"]`);
+      if(el){
+        el.scrollIntoView({ behavior:'smooth', block:'center', inline:'center' });
+        el.classList.add('jump-highlight');
+        setTimeout(() => el.classList.remove('jump-highlight'), 2000);
+      }
+    }, 60);
+  }
+
+  document.getElementById('searchInput').addEventListener('input', (e) => {
+    const results = searchAll(e.target.value);
+    renderSearchResults(results, e.target.value);
+  });
+  document.addEventListener('click', (e) => {
+    if(!e.target.closest('#searchWrap')){
+      document.getElementById('searchResults').classList.remove('show');
+    }
+  });
+
+  load();
+})();
+</script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {
+        // offline on first-ever load with no cached service worker yet — harmless, just skip
+      });
+    });
+  }
+</script>
+</body>
+</html>
