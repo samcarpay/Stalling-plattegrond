@@ -1067,9 +1067,12 @@
         if(val) w.name = val;
         if(layout !== w.layout){
           if(layout === 'single'){
-            // fold the right side's rows into the left list — no data lost,
-            // they just become additional rows in the single-side layout
-            w.left = [...w.left, ...w.right];
+            // merge the bays from both sides into one row — not one row per
+            // side, so switching to "single" actually ends up as one row
+            if(w.left.length === 0) w.left = [emptyRow()];
+            const rightSpots = w.right.flatMap(r => r.spots);
+            w.left[0].spots = [...w.left[0].spots, ...rightSpots];
+            w.left = [w.left[0]]; // drop any extra left rows too — single means one row
             w.right = [];
           } else if(w.right.length === 0){
             w.right = [emptyRow()];
@@ -1183,12 +1186,12 @@
     const head = document.createElement('div');
     head.className = 'row-head';
     let actionsHtml = `<span class="add-spot-wrap"><button class="btn ghost small" data-add-spot="${row.id}">+ Add bay</button></span>`;
-    if(hasAisle && idx === sideCount - 1){
-      // controls live on the outermost (back) row of each side
+    if(idx === sideCount - 1){
+      // controls live on the outermost (back) row
       if(sideCount > 1){
-        actionsHtml += `<button class="side-toggle" data-remove-row="${sideKey}">− remove back row</button>`;
+        actionsHtml += `<button class="side-toggle" data-remove-row="${sideKey}">− remove row ${idx+1} (deletes its bays)</button>`;
       } else {
-        actionsHtml += `<button class="side-toggle" data-add-row="${sideKey}">+ add second row</button>`;
+        actionsHtml += `<button class="side-toggle" data-add-row="${sideKey}">+ add another row</button>`;
       }
     }
     const activeCount = row.spots.filter(s => !s.removed).length;
