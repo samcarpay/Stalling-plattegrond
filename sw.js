@@ -1,6 +1,6 @@
 // Bump this string whenever you edit index.html and re-deploy, so browsers
 // pick up the new version instead of serving a stale cached copy.
-const CACHE_NAME = 'storage-sites-v1';
+const CACHE_NAME = 'storage-sites-v3';
 
 const APP_SHELL = [
   './',
@@ -10,6 +10,7 @@ const APP_SHELL = [
   './icon-512.png',
   './icon-512-maskable.png',
   './apple-touch-icon.png',
+  './firebase-config.js',
 ];
 
 self.addEventListener('install', (event) => {
@@ -28,10 +29,13 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Cache-first: works fully offline once installed. Falls back to the
-// network for anything not already cached, and stores it for next time.
+// Cache-first for our own files: works fully offline once installed.
+// Cross-origin requests (Firebase, the Firebase SDK from gstatic.com, etc.)
+// are left alone entirely — they need a live network round-trip to sync,
+// caching them would only get in the way.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  if (new URL(event.request.url).origin !== self.location.origin) return;
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;

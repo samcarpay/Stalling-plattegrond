@@ -498,6 +498,13 @@
   <div class="modal" id="modalBody"></div>
 </div>
 
+<!-- Optional cross-device sync. Safe to leave as-is if you haven't set up
+     Firebase yet — the app just runs without sync until firebase-config.js
+     has real values in it. See firebase-config.js for setup notes. -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
+
 <script>
 (function(){
   const DEFAULT_TYPES = {
@@ -596,6 +603,42 @@
   // file with no connection at all — that's what makes offline use possible.
   const hasCloudStorage = typeof window.storage !== 'undefined' && window.storage;
 
+  // Optional real-time sync across devices via Firebase, configured in firebase-config.js.
+  // Not required — the app works fine without it, just without cross-device sync.
+  const hasFirebaseSync = typeof FIREBASE_ENABLED !== 'undefined' && FIREBASE_ENABLED
+    && typeof firebaseConfig !== 'undefined' && firebaseConfig.apiKey && firebaseConfig.databaseURL;
+  let syncRef = null;
+  let applyingRemote = false;   // guards against feedback loops while applying an incoming update
+  let suppressNextEcho = false; // set right after our own write, so we don't re-render our own echo
+
+  function initFirebaseSync(){
+    if(!hasFirebaseSync) return;
+    try{
+      firebase.initializeApp(firebaseConfig);
+      syncRef = firebase.database().ref(typeof SYNC_PATH !== 'undefined' ? SYNC_PATH : 'storage-sites-data');
+      syncRef.on('value', (snapshot) => {
+        if(suppressNextEcho){ suppressNextEcho = false; return; }
+        const remote = snapshot.val();
+        if(!remote) return; // nothing there yet — our next save() will seed it
+        const parsed = migrate(JSON.parse(remote));
+        if(!parsed) return;
+        // don't yank the rug out from under an in-progress edit
+        if(document.getElementById('overlay').classList.contains('show')) return;
+        applyingRemote = true;
+        state = parsed;
+        if(!state.warehouses.find(w => w.id === state.activeWarehouseId)){
+          state.activeWarehouseId = state.warehouses[0]?.id;
+        }
+        bindTypes();
+        render();
+        setStatus('synced just now');
+        applyingRemote = false;
+      });
+    }catch(e){
+      console.error('Firebase sync failed to start', e);
+    }
+  }
+
   async function load(){
     try{
       if(hasCloudStorage){
@@ -614,10 +657,12 @@
     }
     bindTypes();
     render();
-    setStatus(hasCloudStorage ? 'saved' : 'saved to this browser (offline)');
+    setStatus(hasCloudStorage ? 'saved' : (hasFirebaseSync ? 'connecting to sync…' : 'saved to this browser (offline)'));
+    initFirebaseSync();
   }
 
   function save(){
+    if(applyingRemote) return; // this "change" came from the server itself — don't bounce it back
     setStatus('saving…');
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
@@ -627,7 +672,13 @@
           setStatus(ok ? 'saved' : 'save failed — changes kept in this session only');
         } else {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-          setStatus('saved to this browser (offline)');
+          setStatus(hasFirebaseSync ? 'saved locally' : 'saved to this browser (offline)');
+        }
+        if(hasFirebaseSync && syncRef){
+          suppressNextEcho = true;
+          syncRef.set(JSON.stringify(state))
+            .then(() => setStatus('synced across devices'))
+            .catch(() => setStatus('saved locally — sync failed (offline?)'));
         }
       }catch(e){
         setStatus('save failed — changes kept in this session only');
