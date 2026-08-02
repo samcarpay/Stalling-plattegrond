@@ -1576,7 +1576,9 @@
   function swapSpotContents(idA, idB){
     const a = findSpotById(idA), b = findSpotById(idB);
     if(!a || !b || a.removed || b.removed || a.isDoor || b.isDoor) return;
-    const fields = ['type','length','occupants','label'];
+    // Only what's PARKED there moves — the bay's own name/number (label, seq)
+    // stays put, since that's the physical bay's identity, not the vehicle's.
+    const fields = ['type','length','occupants'];
     const tmp = {};
     fields.forEach(f => tmp[f] = a[f]);
     fields.forEach(f => a[f] = b[f]);
@@ -2278,6 +2280,18 @@
     document.getElementById('importFile').click();
   });
 
+  function countBaysAndOccupants(st){
+    let bays = 0, occ = 0;
+    (st.warehouses || []).forEach(w => {
+      warehouseRows(w).forEach(r => (r.spots || []).forEach(s => {
+        if(s.removed || s.isDoor) return;
+        bays++;
+        if(s.occupants && s.occupants.length) occ += s.occupants.length;
+      }));
+    });
+    return { bays, occ };
+  }
+
   document.getElementById('importFile').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if(!file) return;
@@ -2286,12 +2300,31 @@
       try{
         const parsed = migrate(JSON.parse(reader.result));
         if(!parsed) throw new Error('bad file');
-        state = parsed;
-        if(!state.warehouses.find(w => w.id === state.activeWarehouseId)){
-          state.activeWarehouseId = state.warehouses[0]?.id;
+
+        const applyImport = () => {
+          createBackup(); // safety snapshot of what's currently loaded, before we replace it
+          state = parsed;
+          if(!state.warehouses.find(w => w.id === state.activeWarehouseId)){
+            state.activeWarehouseId = state.warehouses[0]?.id;
+          }
+          bindTypes();
+          render(); save();
+        };
+
+        const cur = countBaysAndOccupants(state);
+        const inc = countBaysAndOccupants(parsed);
+        const shrunk = (cur.bays > 3 && inc.bays < cur.bays * 0.7)
+          || (cur.occ > 1 && inc.occ < cur.occ * 0.7);
+
+        if(shrunk){
+          confirmAction(
+            'This file looks smaller than your current data',
+            `What's currently loaded has ${cur.bays} bays (${cur.occ} occupied). The file you're importing has ${inc.bays} bays (${inc.occ} occupied). Importing replaces everything currently loaded with this file. A safety backup of your current data is taken first either way — but make sure this is really the file you meant to import.`,
+            applyImport
+          );
+        } else {
+          applyImport();
         }
-        bindTypes();
-        render(); save();
       }catch(err){
         setStatus('import failed — file was not a valid export');
       }
