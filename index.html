@@ -546,18 +546,45 @@
   /* ---------- print ---------- */
   .print-only{display:none;}
   .print-report h1{font-family:var(--font-display);font-size:20px;margin:0 0 2px;}
-  .print-report .print-meta{font-size:11px;color:#555;margin-bottom:18px;}
-  .print-report h2{font-family:var(--font-display);font-size:14px;margin:22px 0 8px;border-bottom:1.5px solid #000;padding-bottom:4px;}
-  .print-report table{width:100%;border-collapse:collapse;margin-bottom:6px;font-size:11.5px;}
-  .print-report th{text-align:left;padding:4px 6px;border-bottom:1px solid #000;font-size:10px;text-transform:uppercase;letter-spacing:.03em;}
-  .print-report td{padding:4px 6px;border-bottom:1px solid #ccc;vertical-align:top;}
-  .print-report .print-empty{font-size:11px;color:#777;font-style:italic;padding:6px;}
-  .print-report .print-summary{display:flex;gap:24px;margin-bottom:16px;font-size:12px;}
+  .print-report .print-meta{font-size:11px;color:#555;margin-bottom:14px;}
+  .print-report .print-summary{display:flex;gap:24px;margin-bottom:18px;font-size:12px;}
+  .print-warehouse{margin-bottom:14px;}
+  .print-warehouse h2{
+    font-family:var(--font-display);font-size:14px;margin:0 0 2px;
+    border-bottom:1.5px solid #000;padding-bottom:4px;
+  }
+  .print-empty{font-size:11px;color:#777;font-style:italic;padding:6px 0;}
+  .print-row-label{font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:#555;margin:9px 0 3px;}
+  .print-row{display:flex;flex-wrap:wrap;gap:5px;}
+  .print-aisle{
+    text-align:center;font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+    border-top:1px dashed #000;border-bottom:1px dashed #000;padding:5px 0;margin:8px 0;
+  }
+  .print-bay-box{
+    width:96px;min-height:56px;border:1px solid #000;border-radius:2px;
+    padding:4px 5px;font-size:9px;line-height:1.25;
+    display:flex;flex-direction:column;justify-content:flex-start;
+    break-inside:avoid;box-sizing:border-box;
+  }
+  .print-bay-box.print-empty-box{border-style:dashed;color:#666;}
+  .print-bay-box.print-door{
+    align-items:center;text-align:center;justify-content:center;
+    background:repeating-linear-gradient(90deg,#000 0 4px,transparent 4px 8px);
+    background-size:100% 1px;background-position:top;background-repeat:no-repeat;
+  }
+  .pbb-tag{font-weight:700;font-size:10.5px;}
+  .pbb-type{color:#555;font-size:8.5px;margin-top:1px;}
+  .pbb-name{font-weight:700;margin-top:3px;}
+  .pbb-reg{color:#333;}
+  .pbb-since{color:#777;font-size:8.5px;}
+  .pbb-sub{color:#777;font-size:8.5px;margin-top:2px;}
   @media print{
     body *{visibility:hidden;}
     .print-only, .print-only *{visibility:visible;}
     .print-only{display:block;position:absolute;top:0;left:0;width:100%;margin:0;padding:16px;background:#fff;color:#000;}
-    @page{margin:14mm;}
+    .print-warehouse{page-break-before:always;}
+    .print-warehouse:first-of-type{page-break-before:auto;}
+    @page{margin:12mm;}
   }
 </style>
 </head>
@@ -1923,6 +1950,51 @@
   });
 
   // ---------- print-friendly report ----------
+  function printBayBoxHtml(spot, tagPrefix){
+    if(spot.removed) return '';
+    const tag = displayTag(spot, tagPrefix);
+
+    if(spot.isDoor){
+      return `
+        <div class="print-bay-box print-door">
+          ${doorIconSvg(14)}
+          <div class="pbb-tag">${escapeHtml(tag)}</div>
+          <div class="pbb-sub">door</div>
+        </div>
+      `;
+    }
+
+    const t = TYPES[spot.type] || { label: 'Unknown' };
+    if(!spot.occupants || spot.occupants.length === 0){
+      return `
+        <div class="print-bay-box print-empty-box">
+          <div class="pbb-tag">${escapeHtml(tag)}</div>
+          <div class="pbb-sub">${escapeHtml(t.label)}<br/>empty</div>
+        </div>
+      `;
+    }
+
+    const names = spot.occupants.map(o => o.name || 'Unnamed').join(', ');
+    const single = spot.occupants.length === 1 ? spot.occupants[0] : null;
+    return `
+      <div class="print-bay-box">
+        <div class="pbb-tag">${escapeHtml(tag)}</div>
+        <div class="pbb-type">${escapeHtml(t.label)}${spot.occupants.length > 1 ? ` ×${spot.occupants.length}` : ''}</div>
+        <div class="pbb-name">${escapeHtml(names)}</div>
+        ${single && single.reg ? `<div class="pbb-reg">${escapeHtml(single.reg)}</div>` : ''}
+        ${single && single.since ? `<div class="pbb-since">since ${escapeHtml(single.since)}</div>` : ''}
+      </div>
+    `;
+  }
+
+  function printRowHtml(row, label, tagPrefix){
+    if(row.spots.filter(s => !s.removed).length === 0) return '';
+    return `
+      <div class="print-row-label">${escapeHtml(label)}</div>
+      <div class="print-row">${row.spots.map(s => printBayBoxHtml(s, tagPrefix)).join('')}</div>
+    `;
+  }
+
   function buildPrintReport(){
     const spots = allSpotsGlobal();
     const occupied = spots.filter(s => s.occupants && s.occupants.length > 0).length;
@@ -1940,57 +2012,34 @@
 
     state.warehouses.forEach(w => {
       const hasAisle = w.layout !== 'single';
-      const sides = hasAisle ? [['left','Left','L'],['right','Right','R']] : [['left','Row','']];
-      const bayRows = [];
-      sides.forEach(([key, sideName, tagPrefix]) => {
-        w[key].forEach(row => {
-          row.spots.forEach(spot => {
-            if(spot.removed || spot.isDoor) return;
-            const tag = displayTag(spot, tagPrefix);
-            const t = TYPES[spot.type] || { label: 'Unknown' };
-            if(!spot.occupants || spot.occupants.length === 0){
-              bayRows.push({ tag, type: t.label, name:'', reg:'', since:'', notes:'' });
-            } else {
-              spot.occupants.forEach((o, i) => {
-                bayRows.push({
-                  tag: i === 0 ? tag : '',
-                  type: i === 0 ? t.label : '',
-                  name: o.name || '', reg: o.reg || '', since: o.since || '', notes: o.notes || ''
-                });
-              });
-            }
-          });
-        });
-      });
+      const totalBays = warehouseSpots(w).length;
 
       const doorNotes = [];
       if(w.aisleDoor) doorNotes.push(`aisle door (${w.aisleDoor})`);
       const doorBays = warehouseRows(w).flatMap(r => r.spots).filter(s => s.isDoor && !s.removed);
       if(doorBays.length) doorNotes.push(`${doorBays.length} bay-door${doorBays.length===1?'':'s'}`);
 
+      html += `<div class="print-warehouse">`;
       html += `<h2>${escapeHtml(w.name)}${w.purpose ? ' — ' + escapeHtml(w.purpose) : ''}${doorNotes.length ? ` <span style="font-weight:400;font-size:11px;">(${escapeHtml(doorNotes.join(', '))})</span>` : ''}</h2>`;
 
-      if(bayRows.length === 0){
+      if(totalBays === 0 && doorBays.length === 0){
         html += `<div class="print-empty">No bays yet in this warehouse.</div>`;
+      } else if(hasAisle){
+        [...w.right].reverse().forEach((row, i) => {
+          const realIdx = w.right.length - 1 - i;
+          html += printRowHtml(row, `Right · row ${realIdx+1}`, 'R');
+        });
+        html += `<div class="print-aisle">Aisle${w.aisleDoor ? ` — door on ${w.aisleDoor}` : ''}</div>`;
+        w.left.forEach((row, i) => {
+          html += printRowHtml(row, `Left · row ${i+1}`, 'L');
+        });
       } else {
-        html += `
-          <table>
-            <thead><tr><th>Bay</th><th>Type</th><th>Owner</th><th>Reg.</th><th>Since</th><th>Notes</th></tr></thead>
-            <tbody>
-              ${bayRows.map(r => `
-                <tr>
-                  <td>${escapeHtml(r.tag)}</td>
-                  <td>${escapeHtml(r.type)}</td>
-                  <td>${escapeHtml(r.name)}</td>
-                  <td>${escapeHtml(r.reg)}</td>
-                  <td>${escapeHtml(r.since)}</td>
-                  <td>${escapeHtml(r.notes)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        `;
+        w.left.forEach((row, i) => {
+          html += printRowHtml(row, `Row ${i+1}`, '');
+        });
       }
+
+      html += `</div>`;
     });
 
     document.getElementById('printReport').innerHTML = `<div class="print-report">${html}</div>`;
