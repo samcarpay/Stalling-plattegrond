@@ -491,14 +491,21 @@
   }
   .type-chip.active{border-color:var(--ink);color:var(--ink);}
 
-  .occ-list{max-height:220px;overflow-y:auto;margin-bottom:8px;}
-  .occ-row{display:flex;gap:5px;align-items:center;margin-bottom:6px;}
+  .occ-list{max-height:260px;overflow-y:auto;margin-bottom:8px;}
+  .occ-row{
+    border:1px solid var(--paper-line);border-radius:var(--radius);
+    padding:7px;margin-bottom:7px;background:var(--paper);
+  }
+  .occ-row-top{display:flex;gap:5px;align-items:center;margin-bottom:5px;}
   .occ-row input{
-    flex:1;min-width:0;padding:6px 7px;border:1px solid var(--line);border-radius:var(--radius);
-    font-family:var(--font-body);font-size:12px;color:var(--ink);background:var(--paper);outline:none;
+    min-width:0;padding:6px 7px;border:1px solid var(--line);border-radius:var(--radius);
+    font-family:var(--font-body);font-size:12px;color:var(--ink);background:var(--card);outline:none;
   }
   .occ-row input:focus{border-color:var(--ink);}
-  .occ-row .occ-notes{flex:1.3;}
+  .occ-row-top .occ-name{flex:1.4;}
+  .occ-row-top .occ-reg{flex:1;}
+  .occ-row-top .occ-since{flex:1;color:var(--ink-soft);font-size:11px;}
+  .occ-row .occ-notes{width:100%;box-sizing:border-box;}
   .occ-remove{
     flex-shrink:0;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);
     background:transparent;color:var(--ink-soft);font-size:11px;cursor:pointer;
@@ -536,6 +543,22 @@
   .add-type-row{
     display:flex;align-items:center;gap:8px;padding-top:12px;margin-top:6px;border-top:1.5px dashed var(--line);
   }
+  /* ---------- print ---------- */
+  .print-only{display:none;}
+  .print-report h1{font-family:var(--font-display);font-size:20px;margin:0 0 2px;}
+  .print-report .print-meta{font-size:11px;color:#555;margin-bottom:18px;}
+  .print-report h2{font-family:var(--font-display);font-size:14px;margin:22px 0 8px;border-bottom:1.5px solid #000;padding-bottom:4px;}
+  .print-report table{width:100%;border-collapse:collapse;margin-bottom:6px;font-size:11.5px;}
+  .print-report th{text-align:left;padding:4px 6px;border-bottom:1px solid #000;font-size:10px;text-transform:uppercase;letter-spacing:.03em;}
+  .print-report td{padding:4px 6px;border-bottom:1px solid #ccc;vertical-align:top;}
+  .print-report .print-empty{font-size:11px;color:#777;font-style:italic;padding:6px;}
+  .print-report .print-summary{display:flex;gap:24px;margin-bottom:16px;font-size:12px;}
+  @media print{
+    body *{visibility:hidden;}
+    .print-only, .print-only *{visibility:visible;}
+    .print-only{display:block;position:absolute;top:0;left:0;width:100%;margin:0;padding:16px;background:#fff;color:#000;}
+    @page{margin:14mm;}
+  }
 </style>
 </head>
 <body>
@@ -551,6 +574,7 @@
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
       <div class="stats" id="stats"></div>
       <div style="display:flex;gap:6px;">
+        <button class="btn ghost small" id="printBtn">Print</button>
         <button class="btn ghost small" id="manageTypesBtn">Manage types</button>
         <button class="btn ghost small" id="exportBtn">Export data</button>
         <button class="btn ghost small" id="importBtn">Import data</button>
@@ -578,6 +602,8 @@
 <div class="overlay" id="overlay">
   <div class="modal" id="modalBody"></div>
 </div>
+
+<div id="printReport" class="print-only"></div>
 
 <!-- Optional cross-device sync. Safe to leave as-is if you haven't set up
      Firebase yet — the app just runs without sync until firebase-config.js
@@ -890,7 +916,7 @@
         <tbody>
           ${whRows.map(r => `
             <tr>
-              <td>${escapeHtml(r.name)}${r.doors ? ` <span class="ov-door-note">(${r.doors} 🚪)</span>` : ''}</td>
+              <td>${escapeHtml(r.name)}${r.doors ? ` <span class="ov-door-note">(${r.doors} ${doorIconSvg(10)})</span>` : ''}</td>
               <td>${r.total}</td>
               <td>${r.occupied}</td>
               <td class="${r.free > 0 ? 'ov-free' : ''}">${r.free}</td>
@@ -1159,8 +1185,8 @@
       const aisle = document.createElement('div');
       aisle.className = 'aisle-bar';
       let doorHtml = '';
-      if(w.aisleDoor === 'left') doorHtml = `<span class="aisle-door aisle-door-left" title="Door">🚪</span>`;
-      if(w.aisleDoor === 'right') doorHtml = `<span class="aisle-door aisle-door-right" title="Door">🚪</span>`;
+      if(w.aisleDoor === 'left') doorHtml = `<span class="aisle-door aisle-door-left" title="Door">${doorIconSvg(16)}</span>`;
+      if(w.aisleDoor === 'right') doorHtml = `<span class="aisle-door aisle-door-right" title="Door">${doorIconSvg(16)}</span>`;
       aisle.innerHTML = `${doorHtml}<span class="aisle-label">AISLE</span>`;
       plan.appendChild(aisle);
 
@@ -1251,7 +1277,7 @@
       el.innerHTML = `
         <div class="spot-del" data-remove-spot="${spot.id}" title="Remove this bay">✕</div>
         <span class="spot-id" style="align-self:flex-start">${escapeHtml(tag)}</span>
-        <span class="door-label">🚪<br/>${escapeHtml(spot.label && spot.label.trim() ? spot.label.trim() : 'door')}</span>
+        <span class="door-label">${doorIconSvg(20)}<br/>${escapeHtml(spot.label && spot.label.trim() ? spot.label.trim() : 'door')}</span>
       `;
       el.addEventListener('click', (e) => {
         if(e.target.closest('[data-remove-spot]')) return;
@@ -1267,7 +1293,10 @@
       el.style.borderColor = t.color;
       const multi = spot.occupants.length > 1;
       const primary = multi ? `${spot.occupants.length}× ${t.label}` : (spot.occupants[0].name || 'Unnamed');
-      const sub = multi ? spot.occupants.map(o => o.name || 'Unnamed').join(', ') : (spot.occupants[0].reg || '');
+      const single = spot.occupants[0];
+      const sub = multi
+        ? spot.occupants.map(o => o.name || 'Unnamed').join(', ')
+        : [single.reg, single.since].filter(Boolean).join(' · ');
       el.innerHTML = `
         <div class="spot-del" data-clear="${spot.id}" title="Clear bay">✕</div>
         <div class="spot-id">${escapeHtml(tag)}</div>
@@ -1430,6 +1459,13 @@
   }
   function escapeAttr(s){ return escapeHtml(s); }
 
+  function doorIconSvg(size){
+    return `<svg viewBox="0 0 16 16" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.3" style="display:inline-block;vertical-align:middle;flex-shrink:0;">
+      <rect x="3" y="1.3" width="10" height="13.4" rx="0.6"/>
+      <circle cx="10.3" cy="8" r="0.85" fill="currentColor" stroke="none"/>
+    </svg>`;
+  }
+
   function typeOrderFor(w){
     const keys = Object.keys(TYPES);
     if(!w.recommended) return keys;
@@ -1510,8 +1546,8 @@
     const auto = autoTag(tagPrefix, spot.seq);
 
     let occDraft = (spot.occupants && spot.occupants.length)
-      ? spot.occupants.map(o => ({ name:o.name||'', reg:o.reg||'', notes:o.notes||'' }))
-      : [{ name:'', reg:'', notes:'' }];
+      ? spot.occupants.map(o => ({ name:o.name||'', reg:o.reg||'', since:o.since||'', notes:o.notes||'' }))
+      : [{ name:'', reg:'', since:'', notes:'' }];
 
     body.innerHTML = `
       <h3>${isEditing ? 'Edit bay' : 'Add / edit bay'}</h3>
@@ -1557,20 +1593,24 @@
       const listEl = document.getElementById('occList');
       listEl.innerHTML = occDraft.map((o, idx) => `
         <div class="occ-row" data-occ-idx="${idx}">
-          <input type="text" class="occ-name" placeholder="Owner / customer name" value="${escapeAttr(o.name)}" />
-          <input type="text" class="occ-reg" placeholder="Reg." value="${escapeAttr(o.reg)}" />
+          <div class="occ-row-top">
+            <input type="text" class="occ-name" placeholder="Owner / customer name" value="${escapeAttr(o.name)}" />
+            <input type="text" class="occ-reg" placeholder="Reg." value="${escapeAttr(o.reg)}" />
+            <input type="date" class="occ-since" value="${escapeAttr(o.since)}" title="Stored since" />
+            <button class="occ-remove" data-remove-occ="${idx}" title="Remove this vehicle">✕</button>
+          </div>
           <input type="text" class="occ-notes" placeholder="Notes" value="${escapeAttr(o.notes)}" />
-          <button class="occ-remove" data-remove-occ="${idx}" title="Remove this vehicle">✕</button>
         </div>
       `).join('');
       listEl.querySelectorAll('.occ-row').forEach(rowEl => {
         const idx = parseInt(rowEl.getAttribute('data-occ-idx'), 10);
         rowEl.querySelector('.occ-name').addEventListener('input', (e) => { occDraft[idx].name = e.target.value; });
         rowEl.querySelector('.occ-reg').addEventListener('input', (e) => { occDraft[idx].reg = e.target.value; });
+        rowEl.querySelector('.occ-since').addEventListener('input', (e) => { occDraft[idx].since = e.target.value; });
         rowEl.querySelector('.occ-notes').addEventListener('input', (e) => { occDraft[idx].notes = e.target.value; });
         rowEl.querySelector('.occ-remove').addEventListener('click', () => {
           occDraft.splice(idx, 1);
-          if(occDraft.length === 0) occDraft.push({ name:'', reg:'', notes:'' });
+          if(occDraft.length === 0) occDraft.push({ name:'', reg:'', since:'', notes:'' });
           renderOccList();
         });
       });
@@ -1578,7 +1618,7 @@
     renderOccList();
 
     document.getElementById('addOccBtn').addEventListener('click', () => {
-      occDraft.push({ name:'', reg:'', notes:'' });
+      occDraft.push({ name:'', reg:'', since:'', notes:'' });
       renderOccList();
     });
 
@@ -1635,7 +1675,7 @@
         spot.type = selectedType;
         spot.length = length;
         spot.occupants = occDraft
-          .map(o => ({ name:o.name.trim(), reg:o.reg.trim(), notes:o.notes.trim() }))
+          .map(o => ({ name:o.name.trim(), reg:o.reg.trim(), since:o.since.trim(), notes:o.notes.trim() }))
           .filter(o => o.name || o.reg || o.notes);
       }
 
@@ -1645,6 +1685,28 @@
 
   function closeModal(){
     document.getElementById('overlay').classList.remove('show');
+  }
+
+  // ---------- reusable confirm dialog for destructive actions ----------
+  function confirmAction(title, message, onConfirm){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal';
+    body.innerHTML = `
+      <h3>${escapeHtml(title)}</h3>
+      <div class="sub">${escapeHtml(message)}</div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="confirmCancelBtn">Cancel</button>
+        <button class="btn danger" id="confirmYesBtn">Delete</button>
+      </div>
+    `;
+    overlay.classList.add('show');
+    document.getElementById('confirmCancelBtn').addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
+    document.getElementById('confirmYesBtn').addEventListener('click', () => {
+      closeModal();
+      onConfirm();
+    });
   }
 
   // ---------- modal: manage vehicle types ----------
@@ -1718,6 +1780,7 @@
         btn.addEventListener('click', () => {
           if(btn.disabled) return;
           const key = btn.getAttribute('data-del-type');
+          if(!confirm(`Delete the "${TYPES[key].label}" type? This can't be undone.`)) return;
           delete TYPES[key];
           state.warehouses.forEach(w => {
             if(Array.isArray(w.recommended)) w.recommended = w.recommended.filter(k => k !== key);
@@ -1784,8 +1847,14 @@
     const hardRemoveBtn = e.target.closest('[data-hard-remove]');
     if(hardRemoveBtn){
       const id = hardRemoveBtn.getAttribute('data-hard-remove');
-      warehouseRows(activeWarehouse()).forEach(r => { r.spots = r.spots.filter(s => s.id !== id); });
-      render(); save();
+      confirmAction(
+        'Delete this bay slot?',
+        `This permanently removes the slot from the plan (unlike "remove", it can't be tapped to reuse afterward). This can't be undone.`,
+        () => {
+          warehouseRows(activeWarehouse()).forEach(r => { r.spots = r.spots.filter(s => s.id !== id); });
+          render(); save();
+        }
+      );
       return;
     }
     const addRowBtn = e.target.closest('[data-add-row]');
@@ -1799,8 +1868,19 @@
     if(removeRowBtn){
       const side = removeRowBtn.getAttribute('data-remove-row');
       const w = activeWarehouse();
-      if(w[side].length > 1) w[side].pop();
-      render(); save();
+      if(w[side].length > 1){
+        const lastRow = w[side][w[side].length - 1];
+        const doIt = () => { w[side].pop(); render(); save(); };
+        if(lastRow.spots.length > 0){
+          confirmAction(
+            'Remove this row?',
+            `This deletes the row and all ${lastRow.spots.length} bay${lastRow.spots.length===1?'':'s'} in it, including any occupants. This can't be undone.`,
+            doIt
+          );
+        } else {
+          doIt();
+        }
+      }
       return;
     }
     const editWhBtn = e.target.closest('[data-edit-wh]');
@@ -1814,10 +1894,17 @@
       e.stopPropagation();
       if(state.warehouses.length <= 1) return;
       const id = delWhBtn.getAttribute('data-del-wh');
-      const removingActive = id === state.activeWarehouseId;
-      state.warehouses = state.warehouses.filter(w => w.id !== id);
-      if(removingActive) state.activeWarehouseId = state.warehouses[0].id;
-      render(); save();
+      const wh = state.warehouses.find(w => w.id === id);
+      confirmAction(
+        'Remove warehouse?',
+        `This deletes "${wh ? wh.name : 'this warehouse'}" and everything stored in it — bays, occupants, everything. This can't be undone.`,
+        () => {
+          const removingActive = id === state.activeWarehouseId;
+          state.warehouses = state.warehouses.filter(w => w.id !== id);
+          if(removingActive) state.activeWarehouseId = state.warehouses[0].id;
+          render(); save();
+        }
+      );
       return;
     }
     const addWhBtn = e.target.closest('#addWarehouseBtn');
@@ -1833,6 +1920,85 @@
   document.getElementById('facilityName').addEventListener('input', (e) => {
     state.facilityName = e.target.value;
     save();
+  });
+
+  // ---------- print-friendly report ----------
+  function buildPrintReport(){
+    const spots = allSpotsGlobal();
+    const occupied = spots.filter(s => s.occupants && s.occupants.length > 0).length;
+    const stamp = new Date().toLocaleDateString();
+
+    let html = `
+      <h1>${escapeHtml(state.facilityName || 'Storage Sites')}</h1>
+      <div class="print-meta">Printed ${escapeHtml(stamp)}</div>
+      <div class="print-summary">
+        <div><strong>${spots.length}</strong> bays</div>
+        <div><strong>${occupied}</strong> in gebruik</div>
+        <div><strong>${spots.length - occupied}</strong> vrij</div>
+      </div>
+    `;
+
+    state.warehouses.forEach(w => {
+      const hasAisle = w.layout !== 'single';
+      const sides = hasAisle ? [['left','Left','L'],['right','Right','R']] : [['left','Row','']];
+      const bayRows = [];
+      sides.forEach(([key, sideName, tagPrefix]) => {
+        w[key].forEach(row => {
+          row.spots.forEach(spot => {
+            if(spot.removed || spot.isDoor) return;
+            const tag = displayTag(spot, tagPrefix);
+            const t = TYPES[spot.type] || { label: 'Unknown' };
+            if(!spot.occupants || spot.occupants.length === 0){
+              bayRows.push({ tag, type: t.label, name:'', reg:'', since:'', notes:'' });
+            } else {
+              spot.occupants.forEach((o, i) => {
+                bayRows.push({
+                  tag: i === 0 ? tag : '',
+                  type: i === 0 ? t.label : '',
+                  name: o.name || '', reg: o.reg || '', since: o.since || '', notes: o.notes || ''
+                });
+              });
+            }
+          });
+        });
+      });
+
+      const doorNotes = [];
+      if(w.aisleDoor) doorNotes.push(`aisle door (${w.aisleDoor})`);
+      const doorBays = warehouseRows(w).flatMap(r => r.spots).filter(s => s.isDoor && !s.removed);
+      if(doorBays.length) doorNotes.push(`${doorBays.length} bay-door${doorBays.length===1?'':'s'}`);
+
+      html += `<h2>${escapeHtml(w.name)}${w.purpose ? ' — ' + escapeHtml(w.purpose) : ''}${doorNotes.length ? ` <span style="font-weight:400;font-size:11px;">(${escapeHtml(doorNotes.join(', '))})</span>` : ''}</h2>`;
+
+      if(bayRows.length === 0){
+        html += `<div class="print-empty">No bays yet in this warehouse.</div>`;
+      } else {
+        html += `
+          <table>
+            <thead><tr><th>Bay</th><th>Type</th><th>Owner</th><th>Reg.</th><th>Since</th><th>Notes</th></tr></thead>
+            <tbody>
+              ${bayRows.map(r => `
+                <tr>
+                  <td>${escapeHtml(r.tag)}</td>
+                  <td>${escapeHtml(r.type)}</td>
+                  <td>${escapeHtml(r.name)}</td>
+                  <td>${escapeHtml(r.reg)}</td>
+                  <td>${escapeHtml(r.since)}</td>
+                  <td>${escapeHtml(r.notes)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      }
+    });
+
+    document.getElementById('printReport').innerHTML = `<div class="print-report">${html}</div>`;
+  }
+
+  document.getElementById('printBtn').addEventListener('click', () => {
+    buildPrintReport();
+    window.print();
   });
 
   document.getElementById('exportBtn').addEventListener('click', () => {
@@ -1887,7 +2053,7 @@
           row.spots.forEach((spot, sIdx) => {
             if(spot.removed) return;
             (spot.occupants || []).forEach(o => {
-              const hay = [o.name || '', o.reg || '', o.notes || ''].join(' ').toLowerCase();
+              const hay = [o.name || '', o.reg || '', o.notes || '', o.since || ''].join(' ').toLowerCase();
               if(hay.includes(q)) results.push({ warehouse: w, spot, sideName, rowIdx, sIdx, tagPrefix, occupant: o });
             });
             const bayHay = [spot.label || '', displayTag(spot, tagPrefix)].join(' ').toLowerCase();
