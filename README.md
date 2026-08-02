@@ -1,2 +1,0 @@
-# Stalling-plattegrond
-Plattegrond
