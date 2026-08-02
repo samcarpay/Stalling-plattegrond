@@ -60,6 +60,33 @@
     min-height:400px;
   }
 
+  /* ---------- pin gate ---------- */
+  .pin-gate{
+    position:fixed;inset:0;z-index:1000;
+    background:var(--paper);
+    display:flex;align-items:center;justify-content:center;
+    padding:20px;
+  }
+  .pin-card{
+    background:var(--card);border:1px solid var(--line);border-radius:6px;
+    padding:32px 28px;width:280px;max-width:100%;text-align:center;
+    box-shadow:0 20px 50px rgba(27,42,74,.15);
+  }
+  .pin-eyebrow{
+    font-family:var(--font-display);font-size:10.5px;letter-spacing:.14em;
+    color:var(--ink-soft);text-transform:uppercase;margin-bottom:6px;
+  }
+  .pin-card h1{
+    font-family:var(--font-display);font-size:19px;color:var(--ink);margin:0 0 18px;
+  }
+  .pin-input{
+    width:100%;box-sizing:border-box;padding:12px;border:1.5px solid var(--line);border-radius:var(--radius);
+    font-family:var(--font-display);font-size:22px;letter-spacing:.3em;text-align:center;
+    color:var(--ink);background:var(--paper);outline:none;
+  }
+  .pin-input:focus{border-color:var(--ink);}
+  .pin-error{color:var(--car);font-size:12px;margin-top:10px;}
+
   /* ---------- header ---------- */
   .titleblock{
     display:flex;
@@ -617,6 +644,15 @@
 </head>
 <body>
 
+<div class="pin-gate" id="pinGate" style="display:none;">
+  <div class="pin-card">
+    <div class="pin-eyebrow">Storage Sites</div>
+    <h1>Enter PIN</h1>
+    <input type="tel" inputmode="numeric" autocomplete="off" id="pinInput" class="pin-input" placeholder="••••" />
+    <div class="pin-error" id="pinError" style="display:none;">Incorrect PIN — try again.</div>
+    <button class="btn" id="pinSubmitBtn" style="width:100%;margin-top:12px;">Unlock</button>
+  </div>
+</div>
 
 <div class="sheet" id="sheet">
   <div class="titleblock">
@@ -656,6 +692,7 @@
   <div id="plan"></div>
 
   <div class="status-line" id="statusLine">loading…</div>
+  <div class="status-line" id="lockLine" style="display:none;"><a href="#" id="lockLink" style="color:inherit;">🔒 Lock</a></div>
 </div>
 
 <div class="overlay" id="overlay">
@@ -2468,7 +2505,53 @@
     }
   });
 
-  load();
+  // ---------- pin gate ----------
+  const PIN_UNLOCK_KEY = 'storage-sites-pin-unlocked';
+  const gateEnabled = typeof APP_PIN !== 'undefined' && APP_PIN;
+
+  function showPinGate(){
+    document.getElementById('sheet').style.display = 'none';
+    const gate = document.getElementById('pinGate');
+    gate.style.display = 'flex';
+    const input = document.getElementById('pinInput');
+    const errorEl = document.getElementById('pinError');
+    input.value = '';
+    input.focus();
+
+    function tryUnlock(){
+      if(input.value === APP_PIN){
+        try{ localStorage.setItem(PIN_UNLOCK_KEY, 'yes'); }catch(e){}
+        gate.style.display = 'none';
+        document.getElementById('sheet').style.display = '';
+        load();
+      } else {
+        errorEl.style.display = 'block';
+        input.value = '';
+        input.focus();
+      }
+    }
+    document.getElementById('pinSubmitBtn').addEventListener('click', tryUnlock);
+    input.addEventListener('keydown', (e) => { if(e.key === 'Enter') tryUnlock(); });
+  }
+
+  if(gateEnabled){
+    const lockLine = document.getElementById('lockLine');
+    lockLine.style.display = 'block';
+    document.getElementById('lockLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      try{ localStorage.removeItem(PIN_UNLOCK_KEY); }catch(err){}
+      location.reload();
+    });
+    let alreadyUnlocked = false;
+    try{ alreadyUnlocked = localStorage.getItem(PIN_UNLOCK_KEY) === 'yes'; }catch(e){}
+    if(alreadyUnlocked){
+      load();
+    } else {
+      showPinGate();
+    }
+  } else {
+    load();
+  }
 })();
 </script>
 

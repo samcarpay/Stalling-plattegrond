@@ -39,12 +39,32 @@
 //      sync automatically whenever you're online.
 // ─────────────────────────────────────────────────────────────────
 
-const FIREBASE_ENABLED = true;
+const FIREBASE_ENABLED = false;
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAM7A6huZzCnTiGgXymOpS-3uzelzn0gjI",
-  databaseURL: "https://stalling-plattegrond-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "stalling-plattegrond",
+  apiKey: "",
+  databaseURL: "",
+  projectId: "",
 };
 
-const SYNC_PATH = "Plattegrond-111ws-qbh3Tm791";
+const SYNC_PATH = "YOUR-PRIVATE-PATH-HERE";
+
+// ─────────────────────────────────────────────────────────────────
+// PIN GATE (optional)
+//
+// A lightweight "keep casual visitors out" screen shown before the app
+// loads. IMPORTANT — read this honestly:
+//   - This is NOT real security. It's checked in the browser, so anyone
+//     who opens developer tools and reads the page's code can see the
+//     PIN. It stops someone from stumbling onto your URL and browsing
+//     around, but it will not stop a determined technical person.
+//   - Your Firebase database itself is unprotected by this — its real
+//     security is still just the private SYNC_PATH word above (see the
+//     sync setup notes). The PIN only gates this app's screen.
+//
+// To turn it on: set a PIN below (letters/numbers, anything you like)
+// and re-upload this file. Leave it blank ("") to turn the gate off
+// entirely — the app then behaves exactly as before.
+// ─────────────────────────────────────────────────────────────────
+
+const APP_PIN = "";
