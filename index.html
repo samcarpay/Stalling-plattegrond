@@ -192,6 +192,18 @@
     outline:none;
   }
   #searchInput:focus{border-color:var(--ink);}
+  .search-filters{
+    display:flex;align-items:center;gap:12px;margin-top:6px;flex-wrap:wrap;
+  }
+  .search-filters select{
+    padding:5px 8px;border:1px solid var(--line);border-radius:var(--radius);
+    font-family:var(--font-body);font-size:11.5px;color:var(--ink-soft);background:var(--card);outline:none;
+  }
+  .search-filters select:focus{border-color:var(--ink);}
+  .search-free-toggle{
+    display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink-soft);cursor:pointer;
+  }
+  .search-free-toggle input{width:13px;height:13px;cursor:pointer;}
   .search-results{
     display:none;
     position:absolute;top:100%;left:0;right:0;margin-top:6px;
@@ -244,6 +256,8 @@
     border-top:1.5px solid var(--ink);border-bottom:none;background:var(--paper);
   }
   .overview-table td.ov-free{color:var(--camper);font-weight:700;}
+  .overview-table tbody tr.ov-row{cursor:pointer;}
+  .overview-table tbody tr.ov-row:hover{background:var(--paper);}
   .ov-door-note{font-size:11px;color:var(--ink-faint);}
 
   /* ---------- warehouse plan ---------- */
@@ -395,6 +409,15 @@
     cursor:pointer;
   }
   .spot:hover .spot-del{display:flex;}
+
+  .spot.long-stay{border-left-width:4px;border-left-color:var(--trailer);}
+  .long-stay-badge{
+    position:absolute;top:-7px;left:-7px;
+    width:16px;height:16px;border-radius:50%;
+    background:var(--trailer);color:var(--card);
+    font-size:9px;line-height:1;
+    display:flex;align-items:center;justify-content:center;
+  }
 
   .add-spot-wrap{position:relative;flex-shrink:0;}
   .add-spot-btn{
@@ -578,6 +601,10 @@
   .pbb-reg{color:#333;}
   .pbb-since{color:#777;font-size:8.5px;}
   .pbb-sub{color:#777;font-size:8.5px;margin-top:2px;}
+  .pbb-notes{
+    color:#444;font-size:8px;font-style:italic;margin-top:3px;
+    overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  }
   @media print{
     body *{visibility:hidden;}
     .print-only, .print-only *{visibility:visible;}
@@ -601,6 +628,7 @@
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
       <div class="stats" id="stats"></div>
       <div style="display:flex;gap:6px;">
+        <button class="btn ghost small" id="backupsBtn">Backups</button>
         <button class="btn ghost small" id="printBtn">Print</button>
         <button class="btn ghost small" id="manageTypesBtn">Manage types</button>
         <button class="btn ghost small" id="exportBtn">Export data</button>
@@ -612,6 +640,10 @@
 
   <div class="search-wrap" id="searchWrap">
     <input type="text" id="searchInput" placeholder="Find a person, name or registration — across all warehouses…" autocomplete="off" />
+    <div class="search-filters">
+      <select id="searchWhFilter"><option value="all">All warehouses</option></select>
+      <label class="search-free-toggle"><input type="checkbox" id="freeOnlyFilter" /> Free bays only</label>
+    </div>
     <div class="search-results" id="searchResults"></div>
   </div>
 
@@ -655,6 +687,13 @@
   function hexAlpha(hex, alpha){
     const a = Math.round(alpha * 255).toString(16).padStart(2,'0');
     return (hex.length === 7 ? hex : '#999999') + a;
+  }
+  const LONG_STAY_MS = 365 * 24 * 60 * 60 * 1000;
+  function isLongStay(since){
+    if(!since) return false;
+    const d = new Date(since);
+    if(isNaN(d.getTime())) return false;
+    return (Date.now() - d.getTime()) > LONG_STAY_MS;
   }
   function slugify(label, existingKeys){
     let base = label.trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'type';
@@ -751,7 +790,8 @@
   // Not required — the app works fine without it, just without cross-device sync.
   const hasFirebaseSync = typeof FIREBASE_ENABLED !== 'undefined' && FIREBASE_ENABLED
     && typeof firebaseConfig !== 'undefined' && firebaseConfig.apiKey && firebaseConfig.databaseURL;
-  let syncRef = null;
+  let syncRef = null;      // base ref at SYNC_PATH — parent of both 'data' and 'backups'
+  let syncDataRef = null;  // syncRef.child('data') — the live, currently-synced state
   let applyingRemote = false;   // guards against feedback loops while applying an incoming update
   let suppressNextEcho = false; // set right after our own write, so we don't re-render our own echo
 
@@ -766,17 +806,19 @@
     try{
       firebase.initializeApp(firebaseConfig);
       syncRef = firebase.database().ref(typeof SYNC_PATH !== 'undefined' ? SYNC_PATH : 'storage-sites-data');
-      syncRef.on('value', (snapshot) => {
+      syncDataRef = syncRef.child('data');
+      syncDataRef.on('value', (snapshot) => {
         connected = true;
         clearTimeout(timeoutId);
         if(suppressNextEcho){ suppressNextEcho = false; return; }
         const remote = snapshot.val();
         if(!remote){
-          // database is empty (first-ever connection) — push our current local
-          // data up so sync goes live immediately instead of waiting for an edit
+          // nothing at the live-data path yet (first-ever connection, or just
+          // migrated from the old flat storage layout) — push what we have
+          // locally so sync goes live immediately instead of waiting for an edit
           setStatus('connected — sending local data to sync…');
           suppressNextEcho = true;
-          syncRef.set(JSON.stringify(state))
+          syncDataRef.set(JSON.stringify(state))
             .then(() => setStatus('synced across devices'))
             .catch((err) => setStatus('connected, but seeding failed: ' + (err && err.message ? err.message : err)));
           return;
@@ -842,16 +884,131 @@
           localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
           setStatus(hasFirebaseSync ? 'saved locally' : 'saved to this browser (offline)');
         }
-        if(hasFirebaseSync && syncRef){
+        if(hasFirebaseSync && syncDataRef){
           suppressNextEcho = true;
-          syncRef.set(JSON.stringify(state))
+          syncDataRef.set(JSON.stringify(state))
             .then(() => setStatus('synced across devices'))
             .catch(() => setStatus('saved locally — sync failed (offline?)'));
         }
+        maybeAutoBackup();
       }catch(e){
         setStatus('save failed — changes kept in this session only');
       }
     }, 250);
+  }
+
+  // ---------- backup history ----------
+  // Auto-snapshots at most once every 15 minutes of activity, plus always
+  // right before a restore (so a restore itself is never a one-way door).
+  const MAX_BACKUPS = 15;
+  const BACKUP_INTERVAL_MS = 15 * 60 * 1000;
+  const LOCAL_BACKUPS_KEY = STORAGE_KEY + '-backups';
+  let lastBackupAt = 0;
+
+  function maybeAutoBackup(){
+    const now = Date.now();
+    if(now - lastBackupAt < BACKUP_INTERVAL_MS) return;
+    lastBackupAt = now;
+    createBackup();
+  }
+
+  function createBackup(){
+    const ts = Date.now();
+    const json = JSON.stringify(state);
+    if(hasFirebaseSync && syncRef){
+      syncRef.child('backups').child(String(ts)).set(json).then(() => pruneFirebaseBackups()).catch(() => {});
+    } else {
+      try{
+        const raw = localStorage.getItem(LOCAL_BACKUPS_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        arr.push({ ts, json });
+        while(arr.length > MAX_BACKUPS) arr.shift();
+        localStorage.setItem(LOCAL_BACKUPS_KEY, JSON.stringify(arr));
+      }catch(e){}
+    }
+  }
+
+  function pruneFirebaseBackups(){
+    syncRef.child('backups').once('value').then(snap => {
+      const val = snap.val();
+      if(!val) return;
+      const keys = Object.keys(val).sort((a,b) => Number(a) - Number(b));
+      while(keys.length > MAX_BACKUPS){
+        syncRef.child('backups').child(keys.shift()).remove();
+      }
+    }).catch(() => {});
+  }
+
+  function listBackups(callback){
+    if(hasFirebaseSync && syncRef){
+      syncRef.child('backups').once('value').then(snap => {
+        const val = snap.val() || {};
+        const list = Object.keys(val).map(k => ({ ts: Number(k), json: val[k] })).sort((a,b) => b.ts - a.ts);
+        callback(list);
+      }).catch(() => callback([]));
+    } else {
+      try{
+        const raw = localStorage.getItem(LOCAL_BACKUPS_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        callback([...arr].sort((a,b) => b.ts - a.ts));
+      }catch(e){ callback([]); }
+    }
+  }
+
+  function openBackupsModal(){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal wide';
+    body.innerHTML = `<h3>Backups</h3><div class="sub">Loading…</div>`;
+    overlay.classList.add('show');
+    overlay.addEventListener('click', (e) => { if(e.target === overlay){ body.className = 'modal'; closeModal(); } }, { once:true });
+
+    listBackups((list) => {
+      if(list.length === 0){
+        body.innerHTML = `
+          <h3>Backups</h3>
+          <div class="sub">No backups yet. One is taken automatically roughly every 15 minutes while you're actively using the app, and always right before a restore.</div>
+          <div class="modal-actions"><button class="btn ghost" id="bkCloseBtn">Close</button></div>
+        `;
+      } else {
+        body.innerHTML = `
+          <h3>Backups</h3>
+          <div class="sub">Restoring replaces everything currently in the app with that snapshot. A safety backup of what's there right now is taken first, so restoring is never a one-way trip.</div>
+          <div id="bkList">
+            ${list.map((b, i) => `
+              <div class="type-manage-row">
+                <span style="flex:1;font-size:12.5px;color:var(--ink);">${escapeHtml(new Date(b.ts).toLocaleString())}</span>
+                <button class="btn ghost small" data-restore-backup="${i}">Restore</button>
+              </div>
+            `).join('')}
+          </div>
+          <div class="modal-actions"><button class="btn ghost" id="bkCloseBtn">Close</button></div>
+        `;
+        body.querySelectorAll('[data-restore-backup]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const b = list[parseInt(btn.getAttribute('data-restore-backup'), 10)];
+            confirmAction(
+              'Restore this backup?',
+              `This replaces everything currently in the app with the snapshot from ${new Date(b.ts).toLocaleString()}. A safety backup of the current state is taken first.`,
+              () => {
+                createBackup(); // safety snapshot of current state, taken before we overwrite it
+                const parsed = migrate(JSON.parse(b.json));
+                if(!parsed) return;
+                state = parsed;
+                if(!state.warehouses.find(w => w.id === state.activeWarehouseId)){
+                  state.activeWarehouseId = state.warehouses[0]?.id;
+                }
+                bindTypes();
+                body.className = 'modal';
+                render(); save();
+              }
+            );
+          });
+        });
+      }
+      const closeBtn = document.getElementById('bkCloseBtn');
+      if(closeBtn) closeBtn.addEventListener('click', () => { body.className = 'modal'; closeModal(); });
+    });
   }
 
   function setStatus(t){
@@ -886,6 +1043,7 @@
   function render(){
     document.getElementById('facilityName').value = state.facilityName;
     renderTabs();
+    populateSearchWhFilter();
     if(showOverview){
       renderOverviewStats();
       document.getElementById('legend').innerHTML = '';
@@ -930,7 +1088,7 @@
       const spots = warehouseSpots(w);
       const occupied = spots.filter(s => s.occupants && s.occupants.length > 0).length;
       const doors = warehouseRows(w).flatMap(r => r.spots).filter(s => s.isDoor && !s.removed).length;
-      return { name: w.name, total: spots.length, occupied, free: spots.length - occupied, doors };
+      return { id: w.id, name: w.name, total: spots.length, occupied, free: spots.length - occupied, doors };
     });
     const whTotals = whRows.reduce((acc, r) => ({
       total: acc.total + r.total, occupied: acc.occupied + r.occupied, free: acc.free + r.free
@@ -942,7 +1100,7 @@
         <thead><tr><th>Warehouse</th><th>Bays</th><th>In gebruik</th><th>Vrij</th></tr></thead>
         <tbody>
           ${whRows.map(r => `
-            <tr>
+            <tr class="ov-row" data-jump-wh="${r.id}" title="Open ${escapeAttr(r.name)}">
               <td>${escapeHtml(r.name)}${r.doors ? ` <span class="ov-door-note">(${r.doors} ${doorIconSvg(10)})</span>` : ''}</td>
               <td>${r.total}</td>
               <td>${r.occupied}</td>
@@ -960,6 +1118,13 @@
         </tfoot>
       </table>
     `;
+    whSection.querySelectorAll('[data-jump-wh]').forEach(row => {
+      row.addEventListener('click', () => {
+        showOverview = false;
+        state.activeWarehouseId = row.getAttribute('data-jump-wh');
+        render();
+      });
+    });
     container.appendChild(whSection);
 
     // ---- pieces per vehicle type (counts individual vehicles, not bays —
@@ -1075,6 +1240,10 @@
         <input type="text" id="fWhName" value="${escapeAttr(w.name)}" />
       </div>
       <div class="field">
+        <label>Purpose / description (optional)</label>
+        <input type="text" id="fWhPurpose" value="${escapeAttr(w.purpose || '')}" placeholder="e.g. Caravans & folding trailers" />
+      </div>
+      <div class="field">
         <label>Layout</label>
         <div id="layoutWrap">${layoutChipHtml()}</div>
       </div>
@@ -1118,6 +1287,7 @@
       if(shouldSave){
         const val = input.value.trim();
         if(val) w.name = val;
+        w.purpose = document.getElementById('fWhPurpose').value.trim();
         if(layout !== w.layout){
           if(layout === 'single'){
             // merge the bays from both sides into one row — not one row per
@@ -1180,7 +1350,9 @@
     const el = document.getElementById('legend');
     el.innerHTML = Object.entries(TYPES).map(([key,t]) =>
       `<div class="legend-item"><span class="swatch" style="background:${t.color}"></span>${t.label}</div>`
-    ).join('') + `<div class="legend-item"><span class="swatch" style="background:var(--paper-line)"></span>Empty bay</div>`;
+    ).join('')
+      + `<div class="legend-item"><span class="swatch" style="background:var(--paper-line)"></span>Empty bay</div>`
+      + `<div class="legend-item"><span class="swatch" style="background:var(--trailer)"></span>⏱ Stored 1yr+</div>`;
   }
 
   function rowLabel(sideName, idx, hasAisle){
@@ -1315,7 +1487,8 @@
 
     if(spot.occupants && spot.occupants.length > 0){
       const t = TYPES[spot.type] || { color:'#7A7A7A', label:'Unknown' };
-      el.className = 'spot';
+      const longStay = spot.occupants.some(o => isLongStay(o.since));
+      el.className = 'spot' + (longStay ? ' long-stay' : '');
       el.style.background = hexAlpha(t.color, 0.16);
       el.style.borderColor = t.color;
       const multi = spot.occupants.length > 1;
@@ -1326,6 +1499,7 @@
         : [single.reg, single.since].filter(Boolean).join(' · ');
       el.innerHTML = `
         <div class="spot-del" data-clear="${spot.id}" title="Clear bay">✕</div>
+        ${longStay ? `<div class="long-stay-badge" title="Stored over a year">⏱</div>` : ''}
         <div class="spot-id">${escapeHtml(tag)}</div>
         <div>
           <div class="spot-label">${escapeHtml(primary)}</div>
@@ -1845,6 +2019,7 @@
   }
 
   document.getElementById('manageTypesBtn').addEventListener('click', openManageTypesModal);
+  document.getElementById('backupsBtn').addEventListener('click', openBackupsModal);
 
   // ---------- global click handling ----------
   document.addEventListener('click', (e) => {
@@ -1976,6 +2151,7 @@
 
     const names = spot.occupants.map(o => o.name || 'Unnamed').join(', ');
     const single = spot.occupants.length === 1 ? spot.occupants[0] : null;
+    const multiNotes = !single ? spot.occupants.filter(o => o.notes).map(o => `${o.name || 'Unnamed'}: ${o.notes}`) : [];
     return `
       <div class="print-bay-box">
         <div class="pbb-tag">${escapeHtml(tag)}</div>
@@ -1983,6 +2159,8 @@
         <div class="pbb-name">${escapeHtml(names)}</div>
         ${single && single.reg ? `<div class="pbb-reg">${escapeHtml(single.reg)}</div>` : ''}
         ${single && single.since ? `<div class="pbb-since">since ${escapeHtml(single.since)}</div>` : ''}
+        ${single && single.notes ? `<div class="pbb-notes">${escapeHtml(single.notes)}</div>` : ''}
+        ${multiNotes.length ? `<div class="pbb-notes">${escapeHtml(multiNotes.join(' · '))}</div>` : ''}
       </div>
     `;
   }
@@ -2090,33 +2268,66 @@
   });
 
   // ---------- search ----------
+  function getSearchFilters(){
+    const whSel = document.getElementById('searchWhFilter');
+    const freeChk = document.getElementById('freeOnlyFilter');
+    return {
+      warehouseId: whSel ? whSel.value : 'all',
+      freeOnly: freeChk ? freeChk.checked : false,
+    };
+  }
+
+  function populateSearchWhFilter(){
+    const sel = document.getElementById('searchWhFilter');
+    if(!sel) return;
+    const current = sel.value;
+    sel.innerHTML = '<option value="all">All warehouses</option>' +
+      state.warehouses.map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('');
+    if([...sel.options].some(o => o.value === current)) sel.value = current;
+  }
+
   function searchAll(query){
     const q = query.trim().toLowerCase();
-    if(!q) return [];
+    const filters = getSearchFilters();
+    const hasActiveFilter = filters.warehouseId !== 'all' || filters.freeOnly;
+    if(!q && !hasActiveFilter) return [];
     const results = [];
     state.warehouses.forEach(w => {
+      if(filters.warehouseId !== 'all' && w.id !== filters.warehouseId) return;
       const hasAisle = w.layout !== 'single';
       const sides = hasAisle ? [['left','Left','L'],['right','Right','R']] : [['left','Row','']];
       sides.forEach(([key, sideName, tagPrefix]) => {
         w[key].forEach((row, rowIdx) => {
           row.spots.forEach((spot, sIdx) => {
             if(spot.removed) return;
+
+            if(filters.freeOnly){
+              if(spot.isDoor) return;
+              const isFree = !spot.occupants || spot.occupants.length === 0;
+              if(!isFree) return;
+              const bayHay = [spot.label || '', displayTag(spot, tagPrefix)].join(' ').toLowerCase();
+              if(!q || bayHay.includes(q)) results.push({ warehouse: w, spot, sideName, rowIdx, sIdx, tagPrefix, occupant: null });
+              return;
+            }
+
             (spot.occupants || []).forEach(o => {
               const hay = [o.name || '', o.reg || '', o.notes || '', o.since || ''].join(' ').toLowerCase();
-              if(hay.includes(q)) results.push({ warehouse: w, spot, sideName, rowIdx, sIdx, tagPrefix, occupant: o });
+              if(q && hay.includes(q)) results.push({ warehouse: w, spot, sideName, rowIdx, sIdx, tagPrefix, occupant: o });
             });
             const bayHay = [spot.label || '', displayTag(spot, tagPrefix)].join(' ').toLowerCase();
-            if(bayHay.includes(q)) results.push({ warehouse: w, spot, sideName, rowIdx, sIdx, tagPrefix, occupant: null });
+            if(q && bayHay.includes(q)) results.push({ warehouse: w, spot, sideName, rowIdx, sIdx, tagPrefix, occupant: null });
           });
         });
       });
     });
-    return results.slice(0, 20);
+    return results.slice(0, 30);
   }
 
   function renderSearchResults(results, query){
     const el = document.getElementById('searchResults');
-    if(!query.trim()){
+    const filters = getSearchFilters();
+    const hasActiveFilter = filters.warehouseId !== 'all' || filters.freeOnly;
+    if(!query.trim() && !hasActiveFilter){
       el.classList.remove('show');
       el.innerHTML = '';
       return;
@@ -2179,6 +2390,12 @@
     const results = searchAll(e.target.value);
     renderSearchResults(results, e.target.value);
   });
+  function rerunSearch(){
+    const val = document.getElementById('searchInput').value;
+    renderSearchResults(searchAll(val), val);
+  }
+  document.getElementById('searchWhFilter').addEventListener('change', rerunSearch);
+  document.getElementById('freeOnlyFilter').addEventListener('change', rerunSearch);
   document.addEventListener('click', (e) => {
     if(!e.target.closest('#searchWrap')){
       document.getElementById('searchResults').classList.remove('show');
