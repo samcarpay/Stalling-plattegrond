@@ -224,6 +224,28 @@
   .legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-soft);}
   .swatch{width:12px;height:12px;border-radius:2px;flex-shrink:0;}
 
+  /* ---------- overview page ---------- */
+  .overview{display:flex;flex-direction:column;gap:26px;}
+  .overview-section{max-width:520px;}
+  .overview-h{
+    font-family:var(--font-display);font-size:13px;font-weight:700;color:var(--ink);
+    margin:0 0 10px;text-transform:uppercase;letter-spacing:.04em;
+  }
+  .overview-table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+  .overview-table th{
+    text-align:left;font-family:var(--font-display);font-size:10.5px;color:var(--ink-soft);
+    text-transform:uppercase;letter-spacing:.04em;padding:8px 12px;border-bottom:1.5px solid var(--ink);
+  }
+  .overview-table td{padding:8px 12px;font-size:13px;color:var(--ink);border-bottom:1px solid var(--paper-line);}
+  .overview-table td .dot{margin-right:7px;vertical-align:middle;}
+  .overview-table tbody tr:last-child td{border-bottom:1px solid var(--paper-line);}
+  .overview-table tfoot td{
+    font-weight:700;font-family:var(--font-display);font-size:12.5px;
+    border-top:1.5px solid var(--ink);border-bottom:none;background:var(--paper);
+  }
+  .overview-table td.ov-free{color:var(--camper);font-weight:700;}
+  .ov-door-note{font-size:11px;color:var(--ink-faint);}
+
   /* ---------- warehouse plan ---------- */
   /* single shared horizontal scroller so every row (and both sides) move together */
   .plan-scroll{overflow-x:auto;padding-bottom:6px;}
@@ -279,6 +301,14 @@
     border-radius:2px;
     z-index:1;
   }
+  .aisle-door{
+    position:absolute; top:50%; transform:translateY(-50%);
+    font-size:18px; z-index:1;
+    background:var(--paper); border:1.5px solid var(--ink); border-radius:2px;
+    padding:2px 6px; line-height:1;
+  }
+  .aisle-door-left{ left:14px; }
+  .aisle-door-right{ right:14px; }
 
   .side-toggle{
     font-size:10.5px;color:var(--ink-faint);background:transparent;border:1px dashed var(--line);
@@ -298,6 +328,10 @@
     transition:transform .12s ease, box-shadow .12s ease;
     border:1.5px solid var(--ink);
     position:relative;
+    -webkit-user-select:none;
+    user-select:none;
+    -webkit-touch-callout:none;
+    touch-action:pan-x;
   }
   .spot:hover{transform:translateY(-2px);box-shadow:0 3px 8px rgba(27,42,74,.18);}
 
@@ -319,6 +353,20 @@
     justify-content:center;
   }
   .spot.gap:hover{opacity:.85;}
+
+  .spot.door{
+    background:repeating-linear-gradient(90deg, var(--ink) 0 8px, transparent 8px 16px);
+    background-color:var(--paper);
+    border-style:solid;
+    border-color:var(--ink);
+    align-items:center;
+    justify-content:center;
+  }
+  .door-label{
+    font-size:10px;color:var(--ink);text-align:center;line-height:1.5;
+    font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;
+    background:var(--paper);padding:2px 4px;border-radius:2px;
+  }
 
   .spot.dragging{ opacity:.35; }
   .spot.drop-target{ outline:3px solid var(--ink); outline-offset:2px; }
@@ -443,6 +491,21 @@
   }
   .type-chip.active{border-color:var(--ink);color:var(--ink);}
 
+  .occ-list{max-height:220px;overflow-y:auto;margin-bottom:8px;}
+  .occ-row{display:flex;gap:5px;align-items:center;margin-bottom:6px;}
+  .occ-row input{
+    flex:1;min-width:0;padding:6px 7px;border:1px solid var(--line);border-radius:var(--radius);
+    font-family:var(--font-body);font-size:12px;color:var(--ink);background:var(--paper);outline:none;
+  }
+  .occ-row input:focus{border-color:var(--ink);}
+  .occ-row .occ-notes{flex:1.3;}
+  .occ-remove{
+    flex-shrink:0;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);
+    background:transparent;color:var(--ink-soft);font-size:11px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .occ-remove:hover{border-color:var(--car);color:var(--car);}
+
   .status-line{font-size:11px;color:var(--ink-faint);text-align:center;margin-top:14px;font-family:var(--font-display);}
 
   /* ---------- manage types modal ---------- */
@@ -560,8 +623,10 @@
       name: cfg.name,
       purpose: cfg.purpose || '',
       recommended: cfg.recommended || null,
+      layout: cfg.layout || 'aisle', // 'aisle' (two-sided, indoor) or 'single' (one row, outdoor — no aisle)
+      aisleDoor: cfg.aisleDoor || null, // 'left' | 'right' | null — only meaningful for 'aisle' layout
       left: Array.from({length: cfg.left}, emptyRow),
-      right: Array.from({length: cfg.right}, emptyRow),
+      right: Array.from({length: cfg.right || 0}, emptyRow),
     };
   }
 
@@ -582,13 +647,14 @@
   }
 
   function spotDefault(type, seq){
-    return { id: uid(), type, length: TYPES[type].length, occupant: null, seq, removed: false };
+    return { id: uid(), type, length: TYPES[type].length, occupants: [], seq, removed: false, isDoor: false };
   }
   function nextSeqFor(row){
     return row.spots.reduce((max, s) => Math.max(max, s.seq || 0), 0) + 1;
   }
 
   let state = null;
+  let showOverview = false; // UI-only, not persisted
   let saveTimer = null;
 
   function migrate(loaded){
@@ -606,10 +672,17 @@
       if(!Array.isArray(w.left)) w.left = [emptyRow()];
       if(!Array.isArray(w.right)) w.right = [emptyRow()];
       if(typeof w.purpose !== 'string') w.purpose = '';
+      if(w.layout !== 'single' && w.layout !== 'aisle') w.layout = 'aisle';
+      if(w.aisleDoor !== 'left' && w.aisleDoor !== 'right') w.aisleDoor = null;
       [...w.left, ...w.right].forEach(row => {
         row.spots.forEach((s, i) => {
           if(typeof s.seq !== 'number') s.seq = i + 1;
           if(typeof s.removed !== 'boolean') s.removed = false;
+          if(typeof s.isDoor !== 'boolean') s.isDoor = false;
+          if(!Array.isArray(s.occupants)){
+            s.occupants = s.occupant ? [s.occupant] : [];
+          }
+          delete s.occupant;
         });
       });
     });
@@ -744,7 +817,7 @@
     return [...w.left, ...w.right];
   }
   function warehouseSpots(w){
-    return warehouseRows(w).flatMap(r => r.spots).filter(s => !s.removed);
+    return warehouseRows(w).flatMap(r => r.spots).filter(s => !s.removed && !s.isDoor);
   }
   function allSpots(){
     return warehouseSpots(activeWarehouse());
@@ -760,21 +833,139 @@
   function render(){
     document.getElementById('facilityName').value = state.facilityName;
     renderTabs();
-    renderStats();
-    renderGlobalStatLine();
-    renderPurpose();
-    renderLegend();
-    renderPlan();
+    if(showOverview){
+      renderOverviewStats();
+      document.getElementById('legend').innerHTML = '';
+      document.getElementById('whPurpose').innerHTML = '';
+      renderOverviewPage();
+    } else {
+      renderStats();
+      renderGlobalStatLine();
+      renderPurpose();
+      renderLegend();
+      renderPlan();
+    }
+  }
+
+  function renderOverviewStats(){
+    const spots = allSpotsGlobal();
+    const total = spots.length;
+    const occupied = spots.filter(s => s.occupants && s.occupants.length > 0).length;
+    const free = total - occupied;
+    const el = document.getElementById('stats');
+    el.innerHTML = '';
+    [['Plekken', total], ['In gebruik', occupied], ['Vrij', free]].forEach(([l,n]) => {
+      const d = document.createElement('div');
+      d.className = 'stat';
+      d.innerHTML = `<div class="n">${n}</div><div class="l">${l}</div>`;
+      el.appendChild(d);
+    });
+    document.getElementById('globalStatLine').textContent = `All ${state.warehouses.length} warehouses`;
+  }
+
+  function renderOverviewPage(){
+    const wrap = document.getElementById('plan');
+    wrap.innerHTML = '';
+
+    const container = document.createElement('div');
+    container.className = 'overview';
+
+    // ---- per-warehouse availability ----
+    const whSection = document.createElement('div');
+    whSection.className = 'overview-section';
+    let whRows = state.warehouses.map(w => {
+      const spots = warehouseSpots(w);
+      const occupied = spots.filter(s => s.occupants && s.occupants.length > 0).length;
+      const doors = warehouseRows(w).flatMap(r => r.spots).filter(s => s.isDoor && !s.removed).length;
+      return { name: w.name, total: spots.length, occupied, free: spots.length - occupied, doors };
+    });
+    const whTotals = whRows.reduce((acc, r) => ({
+      total: acc.total + r.total, occupied: acc.occupied + r.occupied, free: acc.free + r.free
+    }), { total:0, occupied:0, free:0 });
+
+    whSection.innerHTML = `
+      <h3 class="overview-h">Places available per warehouse</h3>
+      <table class="overview-table">
+        <thead><tr><th>Warehouse</th><th>Bays</th><th>In gebruik</th><th>Vrij</th></tr></thead>
+        <tbody>
+          ${whRows.map(r => `
+            <tr>
+              <td>${escapeHtml(r.name)}${r.doors ? ` <span class="ov-door-note">(${r.doors} 🚪)</span>` : ''}</td>
+              <td>${r.total}</td>
+              <td>${r.occupied}</td>
+              <td class="${r.free > 0 ? 'ov-free' : ''}">${r.free}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td>Total</td>
+            <td>${whTotals.total}</td>
+            <td>${whTotals.occupied}</td>
+            <td>${whTotals.free}</td>
+          </tr>
+        </tfoot>
+      </table>
+    `;
+    container.appendChild(whSection);
+
+    // ---- pieces per vehicle type (counts individual vehicles, not bays —
+    // a bay holding 3 motors counts as 3 pieces of that type) ----
+    const typeSection = document.createElement('div');
+    typeSection.className = 'overview-section';
+    const typeCounts = {};
+    Object.keys(TYPES).forEach(k => typeCounts[k] = 0);
+    allSpotsGlobal().forEach(s => {
+      if(!s.occupants) return;
+      const n = s.occupants.length;
+      if(n > 0) typeCounts[s.type] = (typeCounts[s.type] || 0) + n;
+    });
+    const totalPieces = Object.values(typeCounts).reduce((a,b) => a+b, 0);
+
+    typeSection.innerHTML = `
+      <h3 class="overview-h">Pieces per vehicle type</h3>
+      <table class="overview-table">
+        <thead><tr><th>Type</th><th>Pieces</th></tr></thead>
+        <tbody>
+          ${Object.keys(TYPES).map(key => {
+            const t = TYPES[key];
+            const n = typeCounts[key] || 0;
+            return `
+              <tr>
+                <td><span class="dot" style="background:${t.color}"></span>${escapeHtml(t.label)}</td>
+                <td>${n}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+        <tfoot>
+          <tr><td>Total</td><td>${totalPieces}</td></tr>
+        </tfoot>
+      </table>
+    `;
+    container.appendChild(typeSection);
+
+    wrap.appendChild(container);
   }
 
   function renderTabs(){
     const el = document.getElementById('whTabs');
     el.innerHTML = '';
+
+    const overviewTab = document.createElement('div');
+    overviewTab.className = 'wh-tab' + (showOverview ? ' active' : '');
+    overviewTab.innerHTML = `<span class="wh-tab-name-text">📊 Overview</span>`;
+    overviewTab.addEventListener('click', () => {
+      showOverview = true;
+      render();
+    });
+    el.appendChild(overviewTab);
+
     state.warehouses.forEach(w => {
       const spots = warehouseSpots(w);
-      const occ = spots.filter(s => s.occupant).length;
+      const occ = spots.filter(s => s.occupants && s.occupants.length > 0).length;
       const tab = document.createElement('div');
-      tab.className = 'wh-tab' + (w.id === state.activeWarehouseId ? ' active' : '');
+      tab.className = 'wh-tab' + (!showOverview && w.id === state.activeWarehouseId ? ' active' : '');
       tab.innerHTML = `
         <span class="wh-tab-name-text">${escapeHtml(w.name)}</span>
         <span class="wh-count">${occ}/${spots.length}</span>
@@ -783,6 +974,7 @@
       `;
       tab.addEventListener('click', (e) => {
         if(e.target.closest('[data-del-wh]') || e.target.closest('[data-edit-wh]')) return;
+        showOverview = false;
         state.activeWarehouseId = w.id;
         render();
       });
@@ -802,11 +994,40 @@
     const overlay = document.getElementById('overlay');
     const body = document.getElementById('modalBody');
     body.className = 'modal';
+    let layout = w.layout;
+    let aisleDoor = w.aisleDoor;
+
+    function layoutChipHtml(){
+      return `
+        <div class="type-row" id="layoutRow">
+          <div class="type-chip ${layout==='aisle'?'active':''}" data-layout="aisle">Aisle (indoor, two-sided)</div>
+          <div class="type-chip ${layout==='single'?'active':''}" data-layout="single">Single row (outdoor)</div>
+        </div>
+      `;
+    }
+    function doorChipHtml(){
+      return `
+        <div class="type-row" id="doorRow">
+          <div class="type-chip ${!aisleDoor?'active':''}" data-door="">No door marker</div>
+          <div class="type-chip ${aisleDoor==='left'?'active':''}" data-door="left">Door on left</div>
+          <div class="type-chip ${aisleDoor==='right'?'active':''}" data-door="right">Door on right</div>
+        </div>
+      `;
+    }
+
     body.innerHTML = `
-      <h3>Rename warehouse</h3>
+      <h3>Warehouse settings</h3>
       <div class="field">
         <label>Warehouse name</label>
         <input type="text" id="fWhName" value="${escapeAttr(w.name)}" />
+      </div>
+      <div class="field">
+        <label>Layout</label>
+        <div id="layoutWrap">${layoutChipHtml()}</div>
+      </div>
+      <div class="field" id="doorField" style="${layout==='single'?'display:none;':''}">
+        <label>Door position on aisle</label>
+        <div id="doorWrap">${doorChipHtml()}</div>
       </div>
       <div class="modal-actions">
         <button class="btn ghost" id="whCancelBtn">Cancel</button>
@@ -818,14 +1039,48 @@
     input.focus();
     input.select();
 
-    const finish = (save) => {
-      if(save){
+    function bindLayoutChips(){
+      document.querySelectorAll('#layoutRow [data-layout]').forEach(chip => {
+        chip.addEventListener('click', () => {
+          layout = chip.getAttribute('data-layout');
+          document.getElementById('layoutWrap').innerHTML = layoutChipHtml();
+          bindLayoutChips();
+          document.getElementById('doorField').style.display = layout === 'single' ? 'none' : '';
+        });
+      });
+    }
+    function bindDoorChips(){
+      document.querySelectorAll('#doorRow [data-door]').forEach(chip => {
+        chip.addEventListener('click', () => {
+          aisleDoor = chip.getAttribute('data-door') || null;
+          document.getElementById('doorWrap').innerHTML = doorChipHtml();
+          bindDoorChips();
+        });
+      });
+    }
+    bindLayoutChips();
+    bindDoorChips();
+
+    const finish = (shouldSave) => {
+      if(shouldSave){
         const val = input.value.trim();
         if(val) w.name = val;
+        if(layout !== w.layout){
+          if(layout === 'single'){
+            // fold the right side's rows into the left list — no data lost,
+            // they just become additional rows in the single-side layout
+            w.left = [...w.left, ...w.right];
+            w.right = [];
+          } else if(w.right.length === 0){
+            w.right = [emptyRow()];
+          }
+          w.layout = layout;
+        }
+        w.aisleDoor = layout === 'single' ? null : aisleDoor;
       }
       closeModal();
       render();
-      if(save) save();
+      if(shouldSave) save();
     };
     document.getElementById('whCancelBtn').addEventListener('click', () => finish(false));
     document.getElementById('whSaveBtn').addEventListener('click', () => finish(true));
@@ -838,7 +1093,7 @@
 
   function renderGlobalStatLine(){
     const spots = allSpotsGlobal();
-    const occ = spots.filter(s => s.occupant).length;
+    const occ = spots.filter(s => s.occupants && s.occupants.length > 0).length;
     document.getElementById('globalStatLine').textContent =
       `All ${state.warehouses.length} warehouses: ${occ}/${spots.length} bays occupied`;
   }
@@ -853,7 +1108,7 @@
   function renderStats(){
     const spots = allSpots();
     const total = spots.length;
-    const occupied = spots.filter(s => s.occupant).length;
+    const occupied = spots.filter(s => s.occupants && s.occupants.length > 0).length;
     const free = total - occupied;
     const el = document.getElementById('stats');
     el.innerHTML = '';
@@ -872,9 +1127,10 @@
     ).join('') + `<div class="legend-item"><span class="swatch" style="background:var(--paper-line)"></span>Empty bay</div>`;
   }
 
-  function rowLabel(side, idx){
-    if(idx === 0) return `${side} · row 1 (near aisle)`;
-    return `${side} · row ${idx+1} (back)`;
+  function rowLabel(sideName, idx, hasAisle){
+    if(!hasAisle) return `Row ${idx+1}`;
+    if(idx === 0) return `${sideName} · row 1 (near aisle)`;
+    return `${sideName} · row ${idx+1} (back)`;
   }
 
   function renderPlan(){
@@ -882,6 +1138,7 @@
     wrap.innerHTML = '';
     const w = activeWarehouse();
     if(!w) return;
+    const hasAisle = w.layout !== 'single';
 
     const scroller = document.createElement('div');
     scroller.className = 'plan-scroll';
@@ -889,35 +1146,44 @@
     const plan = document.createElement('div');
     plan.className = 'plan';
 
-    // right side, farthest row first so it sits furthest from the aisle bar
-    [...w.right].reverse().forEach((row, i) => {
-      const realIdx = w.right.length - 1 - i;
-      plan.appendChild(renderRowBlock(row, 'Right', realIdx, w.right.length, 'right'));
-    });
+    if(hasAisle){
+      // right side, farthest row first so it sits furthest from the aisle bar
+      [...w.right].reverse().forEach((row, i) => {
+        const realIdx = w.right.length - 1 - i;
+        plan.appendChild(renderRowBlock(row, 'Right', realIdx, w.right.length, 'right', 'R', true));
+      });
 
-    // aisle
-    const aisle = document.createElement('div');
-    aisle.className = 'aisle-bar';
-    aisle.innerHTML = `<span class="aisle-label">AISLE</span>`;
-    plan.appendChild(aisle);
+      const aisle = document.createElement('div');
+      aisle.className = 'aisle-bar';
+      let doorHtml = '';
+      if(w.aisleDoor === 'left') doorHtml = `<span class="aisle-door aisle-door-left" title="Door">🚪</span>`;
+      if(w.aisleDoor === 'right') doorHtml = `<span class="aisle-door aisle-door-right" title="Door">🚪</span>`;
+      aisle.innerHTML = `${doorHtml}<span class="aisle-label">AISLE</span>`;
+      plan.appendChild(aisle);
 
-    // left side, row 1 nearest the aisle first
-    w.left.forEach((row, i) => {
-      plan.appendChild(renderRowBlock(row, 'Left', i, w.left.length, 'left'));
-    });
+      // left side, row 1 nearest the aisle first
+      w.left.forEach((row, i) => {
+        plan.appendChild(renderRowBlock(row, 'Left', i, w.left.length, 'left', 'L', true));
+      });
+    } else {
+      // outdoor / single-row layout — no aisle, no left/right split
+      w.left.forEach((row, i) => {
+        plan.appendChild(renderRowBlock(row, 'Row', i, w.left.length, 'left', '', false));
+      });
+    }
 
     scroller.appendChild(plan);
     wrap.appendChild(scroller);
   }
 
-  function renderRowBlock(row, sideName, idx, sideCount, sideKey){
+  function renderRowBlock(row, sideName, idx, sideCount, sideKey, tagPrefix, hasAisle){
     const block = document.createElement('div');
     block.className = 'row-block';
 
     const head = document.createElement('div');
     head.className = 'row-head';
     let actionsHtml = `<span class="add-spot-wrap"><button class="btn ghost small" data-add-spot="${row.id}">+ Add bay</button></span>`;
-    if(idx === sideCount - 1){
+    if(hasAisle && idx === sideCount - 1){
       // controls live on the outermost (back) row of each side
       if(sideCount > 1){
         actionsHtml += `<button class="side-toggle" data-remove-row="${sideKey}">− remove back row</button>`;
@@ -929,7 +1195,7 @@
     const removedCount = row.spots.length - activeCount;
     const countLabel = `${activeCount} bay${activeCount===1?'':'s'}` + (removedCount ? ` · ${removedCount} removed` : '');
     head.innerHTML = `
-      <span class="row-tag">${rowLabel(sideName, idx)}</span>
+      <span class="row-tag">${rowLabel(sideName, idx, hasAisle)}</span>
       <span style="font-size:10.5px;color:var(--ink-faint);font-family:var(--font-display)">${countLabel}</span>
       <div class="row-actions">${actionsHtml}</div>
     `;
@@ -938,7 +1204,7 @@
     const lane = document.createElement('div');
     lane.className = 'lane';
     row.spots.forEach((spot, sIdx) => {
-      lane.appendChild(renderSpot(row, spot, sideName, idx, sIdx));
+      lane.appendChild(renderSpot(row, spot, sideName, idx, sIdx, tagPrefix));
     });
     lane.appendChild(renderAddSpotControl(row));
     block.appendChild(lane);
@@ -946,19 +1212,19 @@
     return block;
   }
 
-  function autoTag(sideName, seq){
-    return `${sideName[0]}${seq}`;
+  function autoTag(tagPrefix, seq){
+    return `${tagPrefix}${seq}`;
   }
-  function displayTag(spot, sideName){
-    return (spot.label && spot.label.trim()) ? spot.label.trim() : autoTag(sideName, spot.seq);
+  function displayTag(spot, tagPrefix){
+    return (spot.label && spot.label.trim()) ? spot.label.trim() : autoTag(tagPrefix, spot.seq);
   }
 
-  function renderSpot(row, spot, sideName, rowIdx, sIdx){
+  function renderSpot(row, spot, sideName, rowIdx, sIdx, tagPrefix){
     const el = document.createElement('div');
     const w = widthFor(spot.length);
     el.style.width = w + 'px';
     el.setAttribute('data-spot-id', spot.id);
-    const tag = displayTag(spot, sideName);
+    const tag = displayTag(spot, tagPrefix);
 
     if(spot.removed){
       el.className = 'spot gap';
@@ -976,17 +1242,35 @@
       return el;
     }
 
-    if(spot.occupant){
+    if(spot.isDoor){
+      el.className = 'spot door';
+      el.title = 'Door — click to edit';
+      el.innerHTML = `
+        <div class="spot-del" data-remove-spot="${spot.id}" title="Remove this bay">✕</div>
+        <span class="spot-id" style="align-self:flex-start">${escapeHtml(tag)}</span>
+        <span class="door-label">🚪<br/>${escapeHtml(spot.label && spot.label.trim() ? spot.label.trim() : 'door')}</span>
+      `;
+      el.addEventListener('click', (e) => {
+        if(e.target.closest('[data-remove-spot]')) return;
+        openSpotModal(row, spot, sideName, rowIdx, sIdx, tagPrefix);
+      });
+      return el;
+    }
+
+    if(spot.occupants && spot.occupants.length > 0){
       const t = TYPES[spot.type] || { color:'#7A7A7A', label:'Unknown' };
       el.className = 'spot';
       el.style.background = hexAlpha(t.color, 0.16);
       el.style.borderColor = t.color;
+      const multi = spot.occupants.length > 1;
+      const primary = multi ? `${spot.occupants.length}× ${t.label}` : (spot.occupants[0].name || 'Unnamed');
+      const sub = multi ? spot.occupants.map(o => o.name || 'Unnamed').join(', ') : (spot.occupants[0].reg || '');
       el.innerHTML = `
         <div class="spot-del" data-clear="${spot.id}" title="Clear bay">✕</div>
         <div class="spot-id">${escapeHtml(tag)}</div>
         <div>
-          <div class="spot-label">${escapeHtml(spot.occupant.name || 'Unnamed')}</div>
-          <div class="spot-sub">${escapeHtml(spot.occupant.reg || '')}</div>
+          <div class="spot-label">${escapeHtml(primary)}</div>
+          <div class="spot-sub">${escapeHtml(sub)}</div>
         </div>
         <div class="spot-dim">${spot.length}m</div>
       `;
@@ -1001,7 +1285,7 @@
     el.addEventListener('click', (e) => {
       if(e.target.closest('[data-clear]') || e.target.closest('[data-remove-spot]')) return;
       if(dragJustHappened){ dragJustHappened = false; return; }
-      openSpotModal(row, spot, sideName, rowIdx, sIdx);
+      openSpotModal(row, spot, sideName, rowIdx, sIdx, tagPrefix);
     });
     attachDragToSwap(el, spot.id);
     return el;
@@ -1025,8 +1309,8 @@
 
   function swapSpotContents(idA, idB){
     const a = findSpotById(idA), b = findSpotById(idB);
-    if(!a || !b || a.removed || b.removed) return;
-    const fields = ['type','length','occupant','label'];
+    if(!a || !b || a.removed || b.removed || a.isDoor || b.isDoor) return;
+    const fields = ['type','length','occupants','label'];
     const tmp = {};
     fields.forEach(f => tmp[f] = a[f]);
     fields.forEach(f => a[f] = b[f]);
@@ -1091,7 +1375,7 @@
       ghost.style.display = 'none';
       const under = document.elementFromPoint(e.clientX, e.clientY);
       ghost.style.display = '';
-      const targetEl = under ? under.closest('.spot:not(.gap)') : null;
+      const targetEl = under ? under.closest('.spot:not(.gap):not(.door)') : null;
 
       if(targetEl !== currentTarget){
         if(currentTarget) currentTarget.classList.remove('drop-target');
@@ -1212,14 +1496,19 @@
     });
   }
 
-  // ---------- modal: assign / edit occupant ----------
-  function openSpotModal(row, spot, sideName, rowIdx, sIdx){
+  // ---------- modal: assign / edit occupants, or mark as a door ----------
+  function openSpotModal(row, spot, sideName, rowIdx, sIdx, tagPrefix){
     const overlay = document.getElementById('overlay');
     const body = document.getElementById('modalBody');
-    const isEditing = !!spot.occupant;
+    body.className = 'modal';
+    const isEditing = (spot.occupants && spot.occupants.length > 0) || spot.isDoor;
     const w = activeWarehouse();
     const order = typeOrderFor(w);
-    const auto = autoTag(sideName, spot.seq);
+    const auto = autoTag(tagPrefix, spot.seq);
+
+    let occDraft = (spot.occupants && spot.occupants.length)
+      ? spot.occupants.map(o => ({ name:o.name||'', reg:o.reg||'', notes:o.notes||'' }))
+      : [{ name:'', reg:'', notes:'' }];
 
     body.innerHTML = `
       <h3>${isEditing ? 'Edit bay' : 'Add / edit bay'}</h3>
@@ -1228,39 +1517,71 @@
         <label>Bay name / number (optional)</label>
         <input type="text" id="fLabel" value="${escapeAttr(spot.label || '')}" placeholder="${escapeAttr(auto)}" />
       </div>
-      <div class="field">
-        <label>Vehicle type &nbsp;<a href="#" id="manageTypesLink" style="font-weight:400;text-transform:none;letter-spacing:0;">manage types</a></label>
-        <div class="type-row" id="typeRow">
-          ${order.map(key => {
-            const t = TYPES[key];
-            const active = spot.type===key;
-            const styleAttr = active ? ` style="border-color:${t.color};background:${hexAlpha(t.color,0.14)};color:${t.color}"` : '';
-            return `<div class="type-chip ${active?'active':''}" data-type="${key}"${styleAttr}>${escapeHtml(t.label)}</div>`;
-          }).join('')}
+      <div class="field" style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="fIsDoor" ${spot.isDoor ? 'checked' : ''} style="width:16px;height:16px;flex-shrink:0;" />
+        <label style="margin:0;text-transform:none;letter-spacing:0;font-weight:600;font-size:12.5px;color:var(--ink);" for="fIsDoor">This bay is a door (not for storage)</label>
+      </div>
+      <div id="storageFields" style="${spot.isDoor ? 'display:none;' : ''}">
+        <div class="field">
+          <label>Vehicle type &nbsp;<a href="#" id="manageTypesLink" style="font-weight:400;text-transform:none;letter-spacing:0;">manage types</a></label>
+          <div class="type-row" id="typeRow">
+            ${order.map(key => {
+              const t = TYPES[key];
+              const active = spot.type===key;
+              const styleAttr = active ? ` style="border-color:${t.color};background:${hexAlpha(t.color,0.14)};color:${t.color}"` : '';
+              return `<div class="type-chip ${active?'active':''}" data-type="${key}"${styleAttr}>${escapeHtml(t.label)}</div>`;
+            }).join('')}
+          </div>
+        </div>
+        <div class="field">
+          <label>Length (m)</label>
+          <input type="number" id="fLength" min="2" max="15" step="0.1" value="${spot.length}" />
+        </div>
+        <div class="field">
+          <label>Vehicles parked here</label>
+          <div class="occ-list" id="occList"></div>
+          <button class="btn ghost small" id="addOccBtn">+ Add another vehicle in this bay</button>
         </div>
       </div>
-      <div class="field">
-        <label>Length (m)</label>
-        <input type="number" id="fLength" min="2" max="15" step="0.1" value="${spot.length}" />
-      </div>
-      <div class="field">
-        <label>Owner / customer name</label>
-        <input type="text" id="fName" value="${escapeAttr(spot.occupant?.name || '')}" placeholder="e.g. J. Bakker" />
-      </div>
-      <div class="field">
-        <label>Registration / reference</label>
-        <input type="text" id="fReg" value="${escapeAttr(spot.occupant?.reg || '')}" placeholder="e.g. 12-AB-34" />
-      </div>
-      <div class="field">
-        <label>Notes</label>
-        <textarea id="fNotes" placeholder="Keys location, contract end date, etc.">${escapeHtml(spot.occupant?.notes || '')}</textarea>
-      </div>
       <div class="modal-actions">
-        ${isEditing ? '<button class="btn danger" id="clearBtn">Clear occupant</button>' : ''}
+        ${isEditing ? '<button class="btn danger" id="clearBtn">Clear bay</button>' : ''}
         <button class="btn ghost" id="cancelBtn">Cancel</button>
         <button class="btn" id="saveBtn">Save</button>
       </div>
     `;
+
+    function renderOccList(){
+      const listEl = document.getElementById('occList');
+      listEl.innerHTML = occDraft.map((o, idx) => `
+        <div class="occ-row" data-occ-idx="${idx}">
+          <input type="text" class="occ-name" placeholder="Owner / customer name" value="${escapeAttr(o.name)}" />
+          <input type="text" class="occ-reg" placeholder="Reg." value="${escapeAttr(o.reg)}" />
+          <input type="text" class="occ-notes" placeholder="Notes" value="${escapeAttr(o.notes)}" />
+          <button class="occ-remove" data-remove-occ="${idx}" title="Remove this vehicle">✕</button>
+        </div>
+      `).join('');
+      listEl.querySelectorAll('.occ-row').forEach(rowEl => {
+        const idx = parseInt(rowEl.getAttribute('data-occ-idx'), 10);
+        rowEl.querySelector('.occ-name').addEventListener('input', (e) => { occDraft[idx].name = e.target.value; });
+        rowEl.querySelector('.occ-reg').addEventListener('input', (e) => { occDraft[idx].reg = e.target.value; });
+        rowEl.querySelector('.occ-notes').addEventListener('input', (e) => { occDraft[idx].notes = e.target.value; });
+        rowEl.querySelector('.occ-remove').addEventListener('click', () => {
+          occDraft.splice(idx, 1);
+          if(occDraft.length === 0) occDraft.push({ name:'', reg:'', notes:'' });
+          renderOccList();
+        });
+      });
+    }
+    renderOccList();
+
+    document.getElementById('addOccBtn').addEventListener('click', () => {
+      occDraft.push({ name:'', reg:'', notes:'' });
+      renderOccList();
+    });
+
+    document.getElementById('fIsDoor').addEventListener('change', (e) => {
+      document.getElementById('storageFields').style.display = e.target.checked ? 'none' : '';
+    });
 
     let selectedType = spot.type;
     body.querySelectorAll('.type-chip').forEach(chip => {
@@ -1292,22 +1613,28 @@
 
     if(isEditing){
       document.getElementById('clearBtn').addEventListener('click', () => {
-        spot.occupant = null;
+        spot.occupants = [];
+        spot.isDoor = false;
         closeModal(); render(); save();
       });
     }
 
     document.getElementById('saveBtn').addEventListener('click', () => {
       const label = document.getElementById('fLabel').value.trim();
-      const name = document.getElementById('fName').value.trim();
-      const reg = document.getElementById('fReg').value.trim();
-      const notes = document.getElementById('fNotes').value.trim();
-      const length = parseFloat(document.getElementById('fLength').value) || TYPES[selectedType].length;
-
-      spot.type = selectedType;
-      spot.length = length;
+      const isDoor = document.getElementById('fIsDoor').checked;
       spot.label = label;
-      spot.occupant = (name || reg || notes) ? { name, reg, notes } : null;
+      spot.isDoor = isDoor;
+
+      if(isDoor){
+        spot.occupants = [];
+      } else {
+        const length = parseFloat(document.getElementById('fLength').value) || TYPES[selectedType].length;
+        spot.type = selectedType;
+        spot.length = length;
+        spot.occupants = occDraft
+          .map(o => ({ name:o.name.trim(), reg:o.reg.trim(), notes:o.notes.trim() }))
+          .filter(o => o.name || o.reg || o.notes);
+      }
 
       closeModal(); render(); save();
     });
@@ -1321,7 +1648,7 @@
   function typeUsageCount(key){
     let n = 0;
     state.warehouses.forEach(w => {
-      warehouseRows(w).forEach(r => r.spots.forEach(s => { if(s.type === key) n++; }));
+      warehouseRows(w).forEach(r => r.spots.forEach(s => { if(s.type === key && !s.isDoor && !s.removed) n++; }));
     });
     return n;
   }
@@ -1438,7 +1765,7 @@
     if(clearBtn){
       const id = clearBtn.getAttribute('data-clear');
       const spot = allSpots().find(s => s.id === id);
-      if(spot){ spot.occupant = null; render(); save(); }
+      if(spot){ spot.occupants = []; render(); save(); }
       return;
     }
     const removeSpotBtn = e.target.closest('[data-remove-spot]');
@@ -1446,7 +1773,7 @@
       const id = removeSpotBtn.getAttribute('data-remove-spot');
       warehouseRows(activeWarehouse()).forEach(r => {
         const s = r.spots.find(sp => sp.id === id);
-        if(s){ s.removed = true; s.occupant = null; }
+        if(s){ s.removed = true; s.occupants = []; s.isDoor = false; }
       });
       render(); save();
       return;
@@ -1550,18 +1877,18 @@
     if(!q) return [];
     const results = [];
     state.warehouses.forEach(w => {
-      [['left','Left'],['right','Right']].forEach(([key, sideName]) => {
+      const hasAisle = w.layout !== 'single';
+      const sides = hasAisle ? [['left','Left','L'],['right','Right','R']] : [['left','Row','']];
+      sides.forEach(([key, sideName, tagPrefix]) => {
         w[key].forEach((row, rowIdx) => {
           row.spots.forEach((spot, sIdx) => {
             if(spot.removed) return;
-            const occ = spot.occupant;
-            const hay = [
-              occ?.name || '', occ?.reg || '', occ?.notes || '',
-              spot.label || '', displayTag(spot, sideName)
-            ].join(' ').toLowerCase();
-            if(hay.includes(q)){
-              results.push({ warehouse: w, spot, sideName, rowIdx, sIdx });
-            }
+            (spot.occupants || []).forEach(o => {
+              const hay = [o.name || '', o.reg || '', o.notes || ''].join(' ').toLowerCase();
+              if(hay.includes(q)) results.push({ warehouse: w, spot, sideName, rowIdx, sIdx, tagPrefix, occupant: o });
+            });
+            const bayHay = [spot.label || '', displayTag(spot, tagPrefix)].join(' ').toLowerCase();
+            if(bayHay.includes(q)) results.push({ warehouse: w, spot, sideName, rowIdx, sIdx, tagPrefix, occupant: null });
           });
         });
       });
@@ -1582,10 +1909,19 @@
       return;
     }
     el.innerHTML = results.map((r, i) => {
-      const t = TYPES[r.spot.type];
-      const tag = displayTag(r.spot, r.sideName);
-      const who = r.spot.occupant?.name || (r.spot.label ? '(unassigned bay)' : 'Unassigned');
-      const reg = r.spot.occupant?.reg || '';
+      const t = TYPES[r.spot.type] || { color:'#7A7A7A', label:'Unknown' };
+      const tag = displayTag(r.spot, r.tagPrefix);
+      let who, reg = '';
+      if(r.occupant){
+        who = r.occupant.name || 'Unnamed';
+        reg = r.occupant.reg || '';
+      } else if(r.spot.isDoor){
+        who = 'Door' + (r.spot.label ? ' — ' + r.spot.label : '');
+      } else if(r.spot.occupants && r.spot.occupants.length > 1){
+        who = `${r.spot.occupants.length} vehicles in this bay`;
+      } else {
+        who = r.spot.label ? '(unassigned bay)' : 'Unassigned';
+      }
       return `
         <div class="search-result" data-result="${i}">
           <span class="dot" style="background:${t.color}"></span>
