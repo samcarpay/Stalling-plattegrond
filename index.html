@@ -140,10 +140,18 @@
     padding:1px 5px;border-radius:8px;background:rgba(0,0,0,.08);
   }
   .wh-tab.active .wh-count{background:rgba(255,255,255,.18);}
-  .wh-tab-name{
-    background:transparent;border:none;outline:none;font:inherit;color:inherit;
-    max-width:140px;
+  .wh-tab-name-text{
+    max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   }
+  .wh-tab-edit{
+    display:none;
+    width:15px;height:15px;border-radius:50%;
+    align-items:center;justify-content:center;
+    background:rgba(0,0,0,.12);
+    font-size:9px;line-height:1;flex-shrink:0;
+    cursor:pointer;
+  }
+  .wh-tab:hover .wh-tab-edit{display:flex;}
   .wh-tab-del{
     display:none;
     width:15px;height:15px;border-radius:50%;
@@ -758,12 +766,13 @@
       const tab = document.createElement('div');
       tab.className = 'wh-tab' + (w.id === state.activeWarehouseId ? ' active' : '');
       tab.innerHTML = `
-        <input class="wh-tab-name" value="${escapeAttr(w.name)}" data-wh-name="${w.id}" size="${Math.max(6, w.name.length)}" />
+        <span class="wh-tab-name-text">${escapeHtml(w.name)}</span>
         <span class="wh-count">${occ}/${spots.length}</span>
+        <span class="wh-tab-edit" data-edit-wh="${w.id}" title="Rename warehouse">✎</span>
         <span class="wh-tab-del" data-del-wh="${w.id}" title="Remove warehouse">✕</span>
       `;
       tab.addEventListener('click', (e) => {
-        if(e.target.closest('[data-del-wh]') || e.target.tagName === 'INPUT') return;
+        if(e.target.closest('[data-del-wh]') || e.target.closest('[data-edit-wh]')) return;
         state.activeWarehouseId = w.id;
         render();
       });
@@ -775,6 +784,46 @@
     addBtn.textContent = '+';
     addBtn.title = 'Add warehouse';
     el.appendChild(addBtn);
+  }
+
+  function openRenameWarehouseModal(warehouseId){
+    const w = state.warehouses.find(x => x.id === warehouseId);
+    if(!w) return;
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal';
+    body.innerHTML = `
+      <h3>Rename warehouse</h3>
+      <div class="field">
+        <label>Warehouse name</label>
+        <input type="text" id="fWhName" value="${escapeAttr(w.name)}" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="whCancelBtn">Cancel</button>
+        <button class="btn" id="whSaveBtn">Save</button>
+      </div>
+    `;
+    overlay.classList.add('show');
+    const input = document.getElementById('fWhName');
+    input.focus();
+    input.select();
+
+    const finish = (save) => {
+      if(save){
+        const val = input.value.trim();
+        if(val) w.name = val;
+      }
+      closeModal();
+      render();
+      if(save) save();
+    };
+    document.getElementById('whCancelBtn').addEventListener('click', () => finish(false));
+    document.getElementById('whSaveBtn').addEventListener('click', () => finish(true));
+    input.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter') finish(true);
+      if(e.key === 'Escape') finish(false);
+    });
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) finish(false); }, { once:true });
   }
 
   function renderGlobalStatLine(){
@@ -1303,6 +1352,12 @@
       render(); save();
       return;
     }
+    const editWhBtn = e.target.closest('[data-edit-wh]');
+    if(editWhBtn){
+      e.stopPropagation();
+      openRenameWarehouseModal(editWhBtn.getAttribute('data-edit-wh'));
+      return;
+    }
     const delWhBtn = e.target.closest('[data-del-wh]');
     if(delWhBtn){
       e.stopPropagation();
@@ -1366,13 +1421,6 @@
     };
     reader.readAsText(file);
     e.target.value = '';
-  });
-
-  document.addEventListener('change', (e) => {
-    if(e.target.hasAttribute('data-wh-name')){
-      const wh = state.warehouses.find(w => w.id === e.target.getAttribute('data-wh-name'));
-      if(wh){ wh.name = e.target.value; render(); save(); }
-    }
   });
 
   // ---------- search ----------
