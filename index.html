@@ -319,6 +319,15 @@
     justify-content:center;
   }
   .spot.gap:hover{opacity:.85;}
+
+  .spot.dragging{ opacity:.35; }
+  .spot.drop-target{ outline:3px solid var(--ink); outline-offset:2px; }
+  .drag-ghost{
+    position:fixed; pointer-events:none; z-index:500;
+    opacity:.95; transform:scale(1.06);
+    box-shadow:0 14px 30px rgba(27,42,74,.4);
+    border-radius:var(--radius);
+  }
   .gap-label{
     font-size:9.5px;color:var(--ink-faint);text-align:center;line-height:1.3;
     font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;
@@ -474,7 +483,7 @@
     <div class="titleblock-left">
       <div class="eyebrow">Site plan — vehicle storage</div>
       <input id="facilityName" value="Storage Sites" />
-      <div class="scale-note">Bays scale to vehicle length · click any bay to assign or edit</div>
+      <div class="scale-note">Click a bay to edit · press and hold, then drag onto another bay to swap</div>
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
       <div class="stats" id="stats"></div>
@@ -991,9 +1000,135 @@
     }
     el.addEventListener('click', (e) => {
       if(e.target.closest('[data-clear]') || e.target.closest('[data-remove-spot]')) return;
+      if(dragJustHappened){ dragJustHappened = false; return; }
       openSpotModal(row, spot, sideName, rowIdx, sIdx);
     });
+    attachDragToSwap(el, spot.id);
     return el;
+  }
+
+  // ---------- press-and-hold drag to swap two bays' contents ----------
+  // A quick swipe still scrolls the row normally; only a held-then-moved
+  // touch/click picks a bay up, so the two gestures don't fight each other.
+  let dragState = null;
+  let dragJustHappened = false; // suppresses the click that follows a drag release
+
+  function findSpotById(id){
+    for(const w of state.warehouses){
+      for(const r of warehouseRows(w)){
+        const s = r.spots.find(sp => sp.id === id);
+        if(s) return s;
+      }
+    }
+    return null;
+  }
+
+  function swapSpotContents(idA, idB){
+    const a = findSpotById(idA), b = findSpotById(idB);
+    if(!a || !b || a.removed || b.removed) return;
+    const fields = ['type','length','occupant','label'];
+    const tmp = {};
+    fields.forEach(f => tmp[f] = a[f]);
+    fields.forEach(f => a[f] = b[f]);
+    fields.forEach(f => b[f] = tmp[f]);
+  }
+
+  function attachDragToSwap(el, spotId){
+    el.addEventListener('pointerdown', (e) => {
+      if(e.target.closest('.spot-del')) return;
+      if(e.pointerType === 'mouse' && e.button !== 0) return;
+      const startX = e.clientX, startY = e.clientY;
+      const pointerId = e.pointerId;
+      let cancelled = false;
+
+      const cancelIfMoved = (ev) => {
+        if(Math.hypot(ev.clientX - startX, ev.clientY - startY) > 10){
+          cancelled = true;
+          clearTimeout(timer);
+          el.removeEventListener('pointermove', cancelIfMoved);
+          el.removeEventListener('pointerup', cancelEarly);
+        }
+      };
+      const cancelEarly = () => {
+        cancelled = true;
+        clearTimeout(timer);
+        el.removeEventListener('pointermove', cancelIfMoved);
+        el.removeEventListener('pointerup', cancelEarly);
+      };
+      el.addEventListener('pointermove', cancelIfMoved);
+      el.addEventListener('pointerup', cancelEarly);
+
+      const timer = setTimeout(() => {
+        el.removeEventListener('pointermove', cancelIfMoved);
+        el.removeEventListener('pointerup', cancelEarly);
+        if(cancelled) return;
+        startDrag(el, spotId, pointerId, startX, startY);
+      }, 450);
+    });
+  }
+
+  function startDrag(sourceEl, spotId, pointerId, startX, startY){
+    try{ sourceEl.setPointerCapture(pointerId); }catch(e){}
+    sourceEl.classList.add('dragging');
+
+    const rect = sourceEl.getBoundingClientRect();
+    const ghost = sourceEl.cloneNode(true);
+    ghost.className = 'spot drag-ghost';
+    ghost.style.width = rect.width + 'px';
+    ghost.style.height = rect.height + 'px';
+    ghost.style.left = rect.left + 'px';
+    ghost.style.top = rect.top + 'px';
+    ghost.querySelectorAll('.spot-del').forEach(n => n.remove());
+    document.body.appendChild(ghost);
+
+    let currentTarget = null;
+
+    function onMove(e){
+      e.preventDefault();
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      ghost.style.transform = `translate(${dx}px, ${dy}px) scale(1.06)`;
+
+      ghost.style.display = 'none';
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      ghost.style.display = '';
+      const targetEl = under ? under.closest('.spot:not(.gap)') : null;
+
+      if(targetEl !== currentTarget){
+        if(currentTarget) currentTarget.classList.remove('drop-target');
+        if(targetEl && targetEl !== sourceEl) targetEl.classList.add('drop-target');
+        currentTarget = (targetEl && targetEl !== sourceEl) ? targetEl : null;
+      }
+    }
+
+    function onUp(e){
+      sourceEl.removeEventListener('pointermove', onMove);
+      sourceEl.removeEventListener('pointerup', onUp);
+      sourceEl.removeEventListener('pointercancel', onCancel);
+      sourceEl.classList.remove('dragging');
+      if(currentTarget) currentTarget.classList.remove('drop-target');
+      ghost.remove();
+
+      if(currentTarget){
+        const targetId = currentTarget.getAttribute('data-spot-id');
+        swapSpotContents(spotId, targetId);
+        dragJustHappened = true;
+        setTimeout(() => { dragJustHappened = false; }, 300);
+        render(); save();
+      }
+    }
+
+    function onCancel(){
+      sourceEl.removeEventListener('pointermove', onMove);
+      sourceEl.removeEventListener('pointerup', onUp);
+      sourceEl.removeEventListener('pointercancel', onCancel);
+      sourceEl.classList.remove('dragging');
+      if(currentTarget) currentTarget.classList.remove('drop-target');
+      ghost.remove();
+    }
+
+    sourceEl.addEventListener('pointermove', onMove);
+    sourceEl.addEventListener('pointerup', onUp);
+    sourceEl.addEventListener('pointercancel', onCancel);
   }
 
   function renderAddSpotControl(row){
