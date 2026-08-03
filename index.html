@@ -671,40 +671,40 @@
 
 <div class="pin-gate" id="pinGate" style="display:none;">
   <div class="pin-card">
-    <div class="pin-eyebrow">Storage Sites</div>
-    <h1>Enter PIN</h1>
+    <div class="pin-eyebrow">Opslagsites</div>
+    <h1>Voer PIN in</h1>
     <input type="tel" inputmode="numeric" autocomplete="off" id="pinInput" class="pin-input" placeholder="••••" />
-    <div class="pin-error" id="pinError" style="display:none;">Incorrect PIN — try again.</div>
-    <button class="btn" id="pinSubmitBtn" style="width:100%;margin-top:12px;">Unlock</button>
+    <div class="pin-error" id="pinError" style="display:none;">Onjuiste PIN — probeer opnieuw.</div>
+    <button class="btn" id="pinSubmitBtn" style="width:100%;margin-top:12px;">Ontgrendelen</button>
   </div>
 </div>
 
 <div class="sheet" id="sheet">
   <div class="titleblock">
     <div class="titleblock-left">
-      <div class="eyebrow">Site plan — vehicle storage</div>
+      <div class="eyebrow">Plattegrond — voertuigopslag</div>
       <input id="facilityName" value="Storage Sites" />
-      <div class="scale-note">Click a bay to edit · press and hold, then drag onto another bay to swap</div>
+      <div class="scale-note">Klik op een plek om te bewerken · houd ingedrukt en sleep om te wisselen</div>
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
       <div class="stats" id="stats"></div>
       <div style="display:flex;gap:6px;">
-        <button class="btn ghost small" id="backupsBtn">Backups</button>
-        <button class="btn ghost small" id="blockedDatesBtn" style="display:none;">Blocked dates</button>
-        <button class="btn ghost small" id="printBtn">Print</button>
-        <button class="btn ghost small" id="manageTypesBtn">Manage types</button>
-        <button class="btn ghost small" id="exportBtn">Export data</button>
-        <button class="btn ghost small" id="importBtn">Import data</button>
+        <button class="btn ghost small" id="backupsBtn">Back-ups</button>
+        <button class="btn ghost small" id="blockedDatesBtn" style="display:none;">Geblokkeerde data</button>
+        <button class="btn ghost small" id="printBtn">Afdrukken</button>
+        <button class="btn ghost small" id="manageTypesBtn">Typen beheren</button>
+        <button class="btn ghost small" id="exportBtn">Exporteren</button>
+        <button class="btn ghost small" id="importBtn">Importeren</button>
         <input type="file" id="importFile" accept="application/json" style="display:none" />
       </div>
     </div>
   </div>
 
   <div class="search-wrap" id="searchWrap">
-    <input type="text" id="searchInput" placeholder="Find a person, name or registration — across all warehouses…" autocomplete="off" />
+    <input type="text" id="searchInput" placeholder="Zoek een persoon, naam of kenteken — in alle loodsen…" autocomplete="off" />
     <div class="search-filters">
-      <select id="searchWhFilter"><option value="all">All warehouses</option></select>
-      <label class="search-free-toggle"><input type="checkbox" id="freeOnlyFilter" /> Free bays only</label>
+      <select id="searchWhFilter"><option value="all">Alle loodsen</option></select>
+      <label class="search-free-toggle"><input type="checkbox" id="freeOnlyFilter" /> Alleen vrije plekken</label>
     </div>
     <div class="search-results" id="searchResults"></div>
   </div>
@@ -717,8 +717,8 @@
 
   <div id="plan"></div>
 
-  <div class="status-line" id="statusLine">loading…</div>
-  <div class="status-line" id="lockLine" style="display:none;"><a href="#" id="lockLink" style="color:inherit;">🔒 Lock</a></div>
+  <div class="status-line" id="statusLine">laden…</div>
+  <div class="status-line" id="lockLine" style="display:none;"><a href="#" id="lockLink" style="color:inherit;">🔒 Vergrendelen</a></div>
 </div>
 
 <div class="overlay" id="overlay">
@@ -738,11 +738,11 @@
 <script>
 (function(){
   const DEFAULT_TYPES = {
-    car:           { label:'Car',             length:4.5, color:'#B54834' },
-    campervan:     { label:'Campervan',       length:6.0, color:'#2E6E62' },
-    caravan:       { label:'Caravan',         length:7.0, color:'#47598C' },
-    trailer:       { label:'Trailer',         length:5.0, color:'#B4831F' },
-    foldingTrailer:{ label:'Folding Trailer', length:4.0, color:'#6E5B8C' },
+    car:           { label:'Auto',             length:4.5, color:'#B54834' },
+    campervan:     { label:'Camper',           length:6.0, color:'#2E6E62' },
+    caravan:       { label:'Caravan',          length:7.0, color:'#47598C' },
+    trailer:       { label:'Trailer',          length:5.0, color:'#B4831F' },
+    foldingTrailer:{ label:'Vouwwagen',        length:4.0, color:'#6E5B8C' },
   };
   // TYPES always points at state.vehicleTypes once state is loaded (see bindTypes()),
   // so edits made through "Manage types" are visible everywhere without extra plumbing.
@@ -788,11 +788,11 @@
 
   function defaultState(){
     const warehouses = [
-      defaultWarehouse({ name:'Warehouse 1', left:1, right:1, purpose:'Caravans & folding trailers', recommended:['caravan','foldingTrailer'] }),
-      defaultWarehouse({ name:'Warehouse 2', left:1, right:1, purpose:'Caravans & folding trailers', recommended:['caravan','foldingTrailer'] }),
-      defaultWarehouse({ name:'Warehouse 3', left:1, right:1, purpose:'Cars, caravans & campervans', recommended:['car','caravan','campervan'] }),
-      defaultWarehouse({ name:'Warehouse 4', left:2, right:2 }),
-      defaultWarehouse({ name:'Warehouse 5', left:2, right:1 }),
+      defaultWarehouse({ name:'Loods 1', left:1, right:1, purpose:'Caravans & vouwwagens', recommended:['caravan','foldingTrailer'] }),
+      defaultWarehouse({ name:'Loods 2', left:1, right:1, purpose:'Caravans & vouwwagens', recommended:['caravan','foldingTrailer'] }),
+      defaultWarehouse({ name:'Loods 3', left:1, right:1, purpose:'Auto\'s, caravans & campers', recommended:['car','caravan','campervan'] }),
+      defaultWarehouse({ name:'Loods 4', left:2, right:2 }),
+      defaultWarehouse({ name:'Loods 5', left:2, right:1 }),
     ];
     return {
       facilityName: 'Storage Sites',
@@ -868,7 +868,7 @@
     let connected = false;
     const timeoutId = setTimeout(() => {
       if(!connected){
-        setStatus('sync not responding — check firebase-config.js values and your database rules');
+        setStatus('sync reageert niet — controleer firebase-config.js en je database rules');
       }
     }, 7000);
     try{
@@ -901,7 +901,7 @@
           // read caused real data loss. Now it just tells you, and pushing
           // is a deliberate, confirmed action via the Backups dialog.
           const n = allSpotsGlobal().length;
-          setStatus(`cloud is empty — this device has ${n} bay${n===1?'':'s'} locally; open "Backups" to push it up when you're sure`);
+          setStatus(`cloud is leeg — dit apparaat heeft ${n} plek${n===1?"":"ken"} lokaal; open "Back-ups" om ze te versturen als je het zeker weet`);
           return;
         }
         const parsed = migrate(JSON.parse(remote));
@@ -915,18 +915,18 @@
         }
         bindTypes();
         render();
-        setStatus('synced just now');
+        setStatus('zojuist gesynchroniseerd');
         applyingRemote = false;
       }, (error) => {
         connected = true;
         clearTimeout(timeoutId);
         console.error('Firebase sync error', error);
-        setStatus('sync error: ' + (error && error.message ? error.message : error) + ' — check your database rules');
+        setStatus('sync fout: ' + (error && error.message ? error.message : error) + ' — controleer je database rules');
       });
     }catch(e){
       clearTimeout(timeoutId);
       console.error('Firebase sync failed to start', e);
-      setStatus('sync failed to start: ' + (e && e.message ? e.message : e));
+      setStatus('sync kon niet starten: ' + (e && e.message ? e.message : e));
     }
   }
 
@@ -988,32 +988,32 @@
     }
     bindTypes();
     render();
-    setStatus(hasCloudStorage ? 'saved' : (hasFirebaseSync ? 'connecting to sync…' : 'saved to this browser (offline)'));
+    setStatus(hasCloudStorage ? 'opgeslagen' : (hasFirebaseSync ? 'verbinden met sync…' : 'opgeslagen in deze browser (offline)'));
     initFirebaseSync();
   }
 
   function save(){
     if(applyingRemote) return; // this "change" came from the server itself — don't bounce it back
-    setStatus('saving…');
+    setStatus('opslaan…');
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
       try{
         if(hasCloudStorage){
           const ok = await window.storage.set(STORAGE_KEY, JSON.stringify(state), false);
-          setStatus(ok ? 'saved' : 'save failed — changes kept in this session only');
+          setStatus(ok ? 'opgeslagen' : 'opslaan mislukt — wijzigingen alleen bewaard in deze sessie');
         } else {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-          setStatus(hasFirebaseSync ? 'saved locally' : 'saved to this browser (offline)');
+          setStatus(hasFirebaseSync ? 'lokaal opgeslagen' : 'opgeslagen in deze browser (offline)');
         }
         if(hasFirebaseSync && syncDataRef){
           suppressNextEcho = true;
           syncDataRef.set(JSON.stringify(state))
-            .then(() => setStatus('synced across devices'))
-            .catch(() => setStatus('saved locally — sync failed (offline?)'));
+            .then(() => setStatus('gesynchroniseerd tussen apparaten'))
+            .catch(() => setStatus('lokaal opgeslagen — sync mislukt (offline?)'));
         }
         maybeAutoBackup();
       }catch(e){
-        setStatus('save failed — changes kept in this session only');
+        setStatus('opslaan mislukt — wijzigingen alleen bewaard in deze sessie');
       }
     }, 250);
   }
@@ -1081,9 +1081,9 @@
     const n = allSpotsGlobal().length;
     return `
       <div class="field" style="border:1px solid var(--line);border-radius:var(--radius);padding:10px;background:var(--paper);">
-        <label style="margin-bottom:4px;">Cloud sync</label>
-        <div class="sub" style="margin-bottom:8px;">This device currently has ${n} bay${n===1?'':'s'} locally. Only use this if you're sure this device's copy is the one everyone else should get — it overwrites the cloud copy.</div>
-        <button class="btn ghost small" id="pushCloudBtn">Push this device's data to the cloud</button>
+        <label style="margin-bottom:4px;">Cloud synchronisatie</label>
+        <div class="sub" style="margin-bottom:8px;">Dit apparaat heeft momenteel ${n} plek${n===1?'':'ken'} lokaal. Gebruik dit alleen als je zeker weet dat de gegevens op dit apparaat de juiste zijn voor iedereen — het overschrijft de cloud-versie.</div>
+        <button class="btn ghost small" id="pushCloudBtn">Gegevens van dit apparaat naar de cloud sturen</button>
       </div>
     `;
   }
@@ -1093,15 +1093,15 @@
     if(!btn) return;
     btn.addEventListener('click', () => {
       confirmAction(
-        'Push local data to the cloud?',
-        `This overwrites the cloud copy with what's on this device right now. If another device has different or newer data, that will be lost. A safety backup of what's currently in the cloud is not possible to guarantee here, so only do this if you're confident this device is correct.`,
+        'Lokale gegevens naar de cloud sturen?',
+        `Dit overschrijft de cloud-versie met wat er nu op dit apparaat staat. Als een ander apparaat andere of nieuwere gegevens heeft, gaan die verloren. Doe dit alleen als je zeker weet dat dit apparaat correct is.`,
         () => {
           createBackup();
           if(syncDataRef){
             suppressNextEcho = true;
             syncDataRef.set(JSON.stringify(state))
-              .then(() => setStatus('pushed to cloud'))
-              .catch(() => setStatus('push failed — check your connection'));
+              .then(() => setStatus('naar cloud gestuurd'))
+              .catch(() => setStatus('versturen mislukt — controleer je verbinding'));
           }
         }
       );
@@ -1112,39 +1112,39 @@
     const overlay = document.getElementById('overlay');
     const body = document.getElementById('modalBody');
     body.className = 'modal wide';
-    body.innerHTML = `<h3>Backups</h3><div class="sub">Loading…</div>`;
+    body.innerHTML = `<h3>Back-ups</h3><div class="sub">Laden…</div>`;
     overlay.classList.add('show');
     overlay.addEventListener('click', (e) => { if(e.target === overlay){ body.className = 'modal'; closeModal(); } }, { once:true });
 
     listBackups((list) => {
       if(list.length === 0){
         body.innerHTML = `
-          <h3>Backups</h3>
-          <div class="sub">No backups yet. One is taken automatically roughly every 15 minutes while you're actively using the app, and always right before a restore.</div>
+          <h3>Back-ups</h3>
+          <div class="sub">Nog geen back-ups. Er wordt automatisch ongeveer elke 15 minuten een back-up gemaakt terwijl je de app actief gebruikt, en altijd vlak voor het terugzetten van een back-up.</div>
           ${pushLocalToCloudSectionHtml()}
-          <div class="modal-actions"><button class="btn ghost" id="bkCloseBtn">Close</button></div>
+          <div class="modal-actions"><button class="btn ghost" id="bkCloseBtn">Sluiten</button></div>
         `;
       } else {
         body.innerHTML = `
-          <h3>Backups</h3>
-          <div class="sub">Restoring replaces everything currently in the app with that snapshot. A safety backup of what's there right now is taken first, so restoring is never a one-way trip.</div>
+          <h3>Back-ups</h3>
+          <div class="sub">Terugzetten vervangt alles wat nu in de app staat door deze back-up. Er wordt eerst automatisch een veiligheidsback-up gemaakt van de huidige situatie, dus terugzetten is nooit definitief.</div>
           <div id="bkList">
             ${list.map((b, i) => `
               <div class="type-manage-row">
                 <span style="flex:1;font-size:12.5px;color:var(--ink);">${escapeHtml(new Date(b.ts).toLocaleString())}</span>
-                <button class="btn ghost small" data-restore-backup="${i}">Restore</button>
+                <button class="btn ghost small" data-restore-backup="${i}">Terugzetten</button>
               </div>
             `).join('')}
           </div>
           ${pushLocalToCloudSectionHtml()}
-          <div class="modal-actions"><button class="btn ghost" id="bkCloseBtn">Close</button></div>
+          <div class="modal-actions"><button class="btn ghost" id="bkCloseBtn">Sluiten</button></div>
         `;
         body.querySelectorAll('[data-restore-backup]').forEach(btn => {
           btn.addEventListener('click', () => {
             const b = list[parseInt(btn.getAttribute('data-restore-backup'), 10)];
             confirmAction(
-              'Restore this backup?',
-              `This replaces everything currently in the app with the snapshot from ${new Date(b.ts).toLocaleString()}. A safety backup of the current state is taken first.`,
+              'Deze back-up terugzetten?',
+              `Dit vervangt alles wat nu in de app staat door de back-up van ${new Date(b.ts).toLocaleString()}. Er wordt eerst een veiligheidsback-up van de huidige situatie gemaakt.`,
               () => {
                 createBackup(); // safety snapshot of current state, taken before we overwrite it
                 const parsed = migrate(JSON.parse(b.json));
@@ -1195,35 +1195,35 @@
       const dates = Object.keys(blockedDates).sort();
       const ranges = groupIntoRanges(dates);
       body.innerHTML = `
-        <h3>Blocked pickup dates</h3>
-        <div class="sub">Customers won't be able to select these dates on the booking form — handy for holidays or periods you're closed.</div>
+        <h3>Geblokkeerde ophaaldata</h3>
+        <div class="sub">Klanten kunnen deze data niet kiezen op het boekingsformulier — handig voor feestdagen of periodes dat je gesloten bent.</div>
         <div class="field">
-          <label>Block a period (use the same date twice for a single day)</label>
+          <label>Blokkeer een periode (gebruik dezelfde datum tweemaal voor één dag)</label>
           <div style="display:flex;gap:8px;align-items:center;">
             <input type="date" id="blockFrom" style="flex:1;" />
-            <span style="font-size:12px;color:var(--ink-soft);">to</span>
+            <span style="font-size:12px;color:var(--ink-soft);">t/m</span>
             <input type="date" id="blockTo" style="flex:1;" />
           </div>
-          <button class="btn small" id="addBlockedRangeBtn" style="margin-top:8px;width:100%;">Block period</button>
+          <button class="btn small" id="addBlockedRangeBtn" style="margin-top:8px;width:100%;">Periode blokkeren</button>
         </div>
         <div id="blockedList">
           ${ranges.length === 0
-            ? `<div class="print-empty">No dates currently blocked.</div>`
+            ? `<div class="print-empty">Er zijn momenteel geen data geblokkeerd.</div>`
             : ranges.map((r, i) => {
                 const startLabel = new Date(r.start + 'T00:00:00').toLocaleDateString();
                 const label = r.start === r.end
                   ? startLabel
-                  : `${startLabel} – ${new Date(r.end + 'T00:00:00').toLocaleDateString()} (${r.dates.length} days)`;
+                  : `${startLabel} – ${new Date(r.end + 'T00:00:00').toLocaleDateString()} (${r.dates.length} dagen)`;
                 return `
                   <div class="type-manage-row">
                     <span style="flex:1;font-size:12.5px;color:var(--ink);">${escapeHtml(label)}</span>
-                    <button class="btn ghost small" data-unblock-range="${i}">Unblock</button>
+                    <button class="btn ghost small" data-unblock-range="${i}">Deblokkeren</button>
                   </div>
                 `;
               }).join('')
           }
         </div>
-        <div class="modal-actions"><button class="btn ghost" id="bdCloseBtn">Close</button></div>
+        <div class="modal-actions"><button class="btn ghost" id="bdCloseBtn">Sluiten</button></div>
       `;
 
       document.getElementById('addBlockedRangeBtn').addEventListener('click', () => {
@@ -1324,7 +1324,7 @@
       d.innerHTML = `<div class="n">${n}</div><div class="l">${l}</div>`;
       el.appendChild(d);
     });
-    document.getElementById('globalStatLine').textContent = `All ${state.warehouses.length} warehouses`;
+    document.getElementById('globalStatLine').textContent = `Alle ${state.warehouses.length} loodsen`;
   }
 
   function renderOverviewPage(){
@@ -1348,12 +1348,12 @@
     }), { total:0, occupied:0, free:0 });
 
     whSection.innerHTML = `
-      <h3 class="overview-h">Places available per warehouse</h3>
+      <h3 class="overview-h">Beschikbare plekken per loods</h3>
       <table class="overview-table">
-        <thead><tr><th>Warehouse</th><th>Bays</th><th>In gebruik</th><th>Vrij</th></tr></thead>
+        <thead><tr><th>Loods</th><th>Plekken</th><th>In gebruik</th><th>Vrij</th></tr></thead>
         <tbody>
           ${whRows.map(r => `
-            <tr class="ov-row" data-jump-wh="${r.id}" title="Open ${escapeAttr(r.name)}">
+            <tr class="ov-row" data-jump-wh="${r.id}" title="${escapeAttr(r.name)} openen">
               <td>${escapeHtml(r.name)}${r.doors ? ` <span class="ov-door-note">(${r.doors} ${doorIconSvg(10)})</span>` : ''}</td>
               <td>${r.total}</td>
               <td>${r.occupied}</td>
@@ -1363,7 +1363,7 @@
         </tbody>
         <tfoot>
           <tr>
-            <td>Total</td>
+            <td>Totaal</td>
             <td>${whTotals.total}</td>
             <td>${whTotals.occupied}</td>
             <td>${whTotals.free}</td>
@@ -1394,9 +1394,9 @@
     const totalPieces = Object.values(typeCounts).reduce((a,b) => a+b, 0);
 
     typeSection.innerHTML = `
-      <h3 class="overview-h">Pieces per vehicle type</h3>
+      <h3 class="overview-h">Aantal per voertuigtype</h3>
       <table class="overview-table">
-        <thead><tr><th>Type</th><th>Pieces</th></tr></thead>
+        <thead><tr><th>Type</th><th>Aantal</th></tr></thead>
         <tbody>
           ${Object.keys(TYPES).map(key => {
             const t = TYPES[key];
@@ -1410,7 +1410,7 @@
           }).join('')}
         </tbody>
         <tfoot>
-          <tr><td>Total</td><td>${totalPieces}</td></tr>
+          <tr><td>Totaal</td><td>${totalPieces}</td></tr>
         </tfoot>
       </table>
     `;
@@ -1474,7 +1474,7 @@
     wrap.innerHTML = '';
 
     if(!appointmentsRef){
-      wrap.innerHTML = `<div class="print-empty">Connecting…</div>`;
+      wrap.innerHTML = `<div class="print-empty">Verbinden…</div>`;
       return;
     }
 
@@ -1484,7 +1484,7 @@
     const historyToggle = document.createElement('button');
     historyToggle.className = 'btn ghost small';
     historyToggle.style.marginBottom = '14px';
-    historyToggle.textContent = showAgendaHistory ? 'Hide history' : 'Show history (completed pickups)';
+    historyToggle.textContent = showAgendaHistory ? 'Geschiedenis verbergen' : 'Geschiedenis tonen (afgeronde ophalingen)';
     historyToggle.addEventListener('click', () => {
       showAgendaHistory = !showAgendaHistory;
       renderAgendaPage();
@@ -1495,7 +1495,7 @@
     if(active.length === 0 && !showAgendaHistory){
       const empty = document.createElement('div');
       empty.className = 'print-empty';
-      empty.textContent = 'No pickup appointments yet. They\'ll appear here as customers submit them through your website.';
+      empty.textContent = 'Nog geen ophaalafspraken. Ze verschijnen hier zodra klanten ze via je website indienen.';
       container.appendChild(empty);
       wrap.appendChild(container);
       return;
@@ -1503,7 +1503,7 @@
     if(active.length === 0){
       const empty = document.createElement('div');
       empty.className = 'print-empty';
-      empty.textContent = 'No active pickup appointments right now.';
+      empty.textContent = 'Op dit moment geen actieve ophaalafspraken.';
       container.appendChild(empty);
     }
 
@@ -1524,7 +1524,7 @@
       const section = document.createElement('div');
       section.className = 'overview-section';
       section.style.maxWidth = '640px';
-      section.innerHTML = `<h3 class="overview-h">Week of ${wk.monday.toLocaleDateString()} – ${endDate.toLocaleDateString()}</h3>`;
+      section.innerHTML = `<h3 class="overview-h">Week van ${wk.monday.toLocaleDateString()} – ${endDate.toLocaleDateString()}</h3>`;
 
       wk.items.forEach(a => {
         const info = findLinkedInfo(a.linked);
@@ -1535,8 +1535,8 @@
         card.innerHTML = `
           <div class="agenda-card-top">
             <div>
-              <div class="agenda-date">${escapeHtml(a.date || '(no date given)')}</div>
-              <div class="agenda-name">${escapeHtml(a.name || 'Unnamed')}</div>
+              <div class="agenda-date">${escapeHtml(a.date || '(geen datum opgegeven)')}</div>
+              <div class="agenda-name">${escapeHtml(a.name || 'Naam onbekend')}</div>
               <div class="agenda-sub">${escapeHtml(a.vehicleDesc || '')}${a.contact ? ' · ' + escapeHtml(a.contact) : ''}</div>
               ${a.notes ? `<div class="agenda-sub">${escapeHtml(a.notes)}</div>` : ''}
             </div>
@@ -1544,10 +1544,10 @@
           </div>
           <div class="agenda-link">
             ${info
-              ? `Linked to <strong>${escapeHtml(info.warehouse.name)}</strong>, bay ${escapeHtml(displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R')))}${away ? ' — <span style="color:var(--ink);font-weight:700;">currently away</span>' : ''}`
+              ? `Gekoppeld aan <strong>${escapeHtml(info.warehouse.name)}</strong>, plek ${escapeHtml(displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R')))}${away ? ' — <span style="color:var(--ink);font-weight:700;">momenteel weg</span>' : ''}`
               : suggestion
-                ? `<span style="color:var(--camper);">Suggested match:</span> <strong>${escapeHtml(suggestion.warehouse.name)}</strong>, bay ${escapeHtml(displayTag(suggestion.spot, suggestion.warehouse.layout==='single' ? '' : (suggestion.side==='left'?'L':'R')))} (object nummer matches)`
-                : `<span style="color:var(--car);">Not linked to a bay yet</span>`
+                ? `<span style="color:var(--camper);">Mogelijke match:</span> <strong>${escapeHtml(suggestion.warehouse.name)}</strong>, plek ${escapeHtml(displayTag(suggestion.spot, suggestion.warehouse.layout==='single' ? '' : (suggestion.side==='left'?'L':'R')))} (object nummer komt overeen)`
+                : `<span style="color:var(--car);">Nog niet gekoppeld aan een plek</span>`
             }
           </div>
         `;
@@ -1555,7 +1555,7 @@
         if(info){
           const awayBtn = document.createElement('button');
           awayBtn.className = 'btn ghost small';
-          awayBtn.textContent = away ? 'Mark returned' : 'Mark away';
+          awayBtn.textContent = away ? 'Terug gemeld' : 'Markeer als weg';
           awayBtn.addEventListener('click', () => {
             info.spot.occupants.forEach(o => { o.away = !away; });
             render(); save();
@@ -1565,7 +1565,7 @@
           if(suggestion){
             const confirmBtn = document.createElement('button');
             confirmBtn.className = 'btn small';
-            confirmBtn.textContent = 'Confirm match';
+            confirmBtn.textContent = 'Match bevestigen';
             confirmBtn.addEventListener('click', () => {
               appointmentsRef.child(a.id).update({
                 linked: { warehouseId: suggestion.warehouse.id, spotId: suggestion.spot.id }
@@ -1575,13 +1575,13 @@
           }
           const linkBtn = document.createElement('button');
           linkBtn.className = 'btn ghost small';
-          linkBtn.textContent = suggestion ? 'Search instead' : 'Link to bay';
+          linkBtn.textContent = suggestion ? 'Toch zoeken' : 'Koppel aan plek';
           linkBtn.addEventListener('click', () => openLinkAppointmentModal(a.id));
           actionsEl.appendChild(linkBtn);
         }
         const doneBtn = document.createElement('button');
         doneBtn.className = 'btn ghost small';
-        doneBtn.textContent = 'Mark done';
+        doneBtn.textContent = 'Markeer als afgerond';
         doneBtn.addEventListener('click', () => {
           appointmentsRef.child(a.id).update({ status: 'done', completedAt: Date.now() });
         });
@@ -1589,9 +1589,9 @@
         const delBtn = document.createElement('button');
         delBtn.className = 'btn ghost small';
         delBtn.textContent = '✕';
-        delBtn.title = 'Delete this request';
+        delBtn.title = 'Deze aanvraag verwijderen';
         delBtn.addEventListener('click', () => {
-          confirmAction('Delete this appointment request?', `This removes it permanently from the Agenda.`, () => {
+          confirmAction('Deze aanvraag verwijderen?', `Dit verwijdert de aanvraag permanent uit de agenda.`, () => {
             appointmentsRef.child(a.id).remove();
           });
         });
@@ -1609,12 +1609,12 @@
       const histSection = document.createElement('div');
       histSection.className = 'overview-section';
       histSection.style.maxWidth = '640px';
-      histSection.innerHTML = `<h3 class="overview-h">History — completed pickups</h3>`;
+      histSection.innerHTML = `<h3 class="overview-h">Geschiedenis — afgeronde ophalingen</h3>`;
 
       if(done.length === 0){
         const empty = document.createElement('div');
         empty.className = 'print-empty';
-        empty.textContent = 'No completed pickups yet.';
+        empty.textContent = 'Nog geen afgeronde ophalingen.';
         histSection.appendChild(empty);
       }
 
@@ -1626,24 +1626,24 @@
         card.innerHTML = `
           <div class="agenda-card-top">
             <div>
-              <div class="agenda-date">${escapeHtml(a.date || '')}${a.completedAt ? ' · done ' + new Date(a.completedAt).toLocaleDateString() : ''}</div>
-              <div class="agenda-name">${escapeHtml(a.name || 'Unnamed')}</div>
+              <div class="agenda-date">${escapeHtml(a.date || '')}${a.completedAt ? ' · afgerond op ' + new Date(a.completedAt).toLocaleDateString() : ''}</div>
+              <div class="agenda-name">${escapeHtml(a.name || 'Naam onbekend')}</div>
               <div class="agenda-sub">${escapeHtml(a.vehicleDesc || '')}${a.contact ? ' · ' + escapeHtml(a.contact) : ''}</div>
             </div>
             <div class="agenda-actions"></div>
           </div>
           <div class="agenda-link">
             ${info
-              ? `Was linked to <strong>${escapeHtml(info.warehouse.name)}</strong>, bay ${escapeHtml(displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R')))}`
-              : `Was not linked to a bay`
+              ? `Was gekoppeld aan <strong>${escapeHtml(info.warehouse.name)}</strong>, plek ${escapeHtml(displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R')))}`
+              : `Was niet gekoppeld aan een plek`
             }
           </div>
         `;
         const actionsEl = card.querySelector('.agenda-actions');
         const reopenBtn = document.createElement('button');
         reopenBtn.className = 'btn ghost small';
-        reopenBtn.textContent = 'Reopen';
-        reopenBtn.title = 'Move back to active appointments';
+        reopenBtn.textContent = 'Heropenen';
+        reopenBtn.title = 'Terugzetten naar actieve afspraken';
         reopenBtn.addEventListener('click', () => {
           appointmentsRef.child(a.id).update({ status: 'requested', completedAt: null });
         });
@@ -1651,9 +1651,9 @@
         const delBtn = document.createElement('button');
         delBtn.className = 'btn ghost small';
         delBtn.textContent = '✕';
-        delBtn.title = 'Delete permanently';
+        delBtn.title = 'Permanent verwijderen';
         delBtn.addEventListener('click', () => {
-          confirmAction('Delete this history entry?', 'This permanently removes it — there is no further history after this.', () => {
+          confirmAction('Dit geschiedenisitem verwijderen?', 'Dit verwijdert het permanent — hierna is er geen geschiedenis meer van.', () => {
             appointmentsRef.child(a.id).remove();
           });
         });
@@ -1674,14 +1674,14 @@
     const body = document.getElementById('modalBody');
     body.className = 'modal wide';
     body.innerHTML = `
-      <h3>Link to a bay</h3>
-      <div class="sub">Requested by ${escapeHtml(appt.name || 'Unnamed')} — ${escapeHtml(appt.vehicleDesc || 'no vehicle description given')}</div>
+      <h3>Koppel aan een plek</h3>
+      <div class="sub">Aangevraagd door ${escapeHtml(appt.name || 'Naam onbekend')} — ${escapeHtml(appt.vehicleDesc || 'geen voertuigomschrijving opgegeven')}</div>
       <div class="field">
-        <label>Search your bays (name, registration, bay label)</label>
-        <input type="text" id="linkSearchInput" placeholder="Start typing…" />
+        <label>Zoek je plekken (naam, kenteken, pleknaam)</label>
+        <input type="text" id="linkSearchInput" placeholder="Begin met typen…" />
       </div>
       <div id="linkResults" style="max-height:320px;overflow-y:auto;"></div>
-      <div class="modal-actions"><button class="btn ghost" id="linkCancelBtn">Cancel</button></div>
+      <div class="modal-actions"><button class="btn ghost" id="linkCancelBtn">Annuleren</button></div>
     `;
     overlay.classList.add('show');
     const input = document.getElementById('linkSearchInput');
@@ -1692,18 +1692,18 @@
       const results = searchOccupiedBaysForLink(input.value);
       const resEl = document.getElementById('linkResults');
       if(results.length === 0){
-        resEl.innerHTML = `<div class="search-empty">No matches — try a different search.</div>`;
+        resEl.innerHTML = `<div class="search-empty">Geen resultaten — probeer een andere zoekterm.</div>`;
         return;
       }
       resEl.innerHTML = results.map((r, i) => {
-        const t = TYPES[r.spot.type] || { color:'#7A7A7A', label:'Unknown' };
+        const t = TYPES[r.spot.type] || { color:'#7A7A7A', label:'Onbekend' };
         const tag = displayTag(r.spot, r.tagPrefix);
         return `
           <div class="search-result" data-link-result="${i}">
             <span class="dot" style="background:${t.color}"></span>
             <div class="search-result-main">
-              <div class="search-result-name">${escapeHtml(r.occupant.name || 'Unnamed')}${r.occupant.reg ? ' · ' + escapeHtml(r.occupant.reg) : ''}</div>
-              <div class="search-result-meta">${escapeHtml(r.warehouse.name)} · bay ${escapeHtml(tag)} · ${t.label}</div>
+              <div class="search-result-name">${escapeHtml(r.occupant.name || 'Naam onbekend')}${r.occupant.reg ? ' · ' + escapeHtml(r.occupant.reg) : ''}</div>
+              <div class="search-result-meta">${escapeHtml(r.warehouse.name)} · plek ${escapeHtml(tag)} · ${t.label}</div>
             </div>
           </div>
         `;
@@ -1730,21 +1730,11 @@
     const el = document.getElementById('whTabs');
     el.innerHTML = '';
 
-    const overviewTab = document.createElement('div');
-    overviewTab.className = 'wh-tab' + (showOverview ? ' active' : '');
-    overviewTab.innerHTML = `<span class="wh-tab-name-text">📊 Overview</span>`;
-    overviewTab.addEventListener('click', () => {
-      showOverview = true;
-      showAgenda = false;
-      render();
-    });
-    el.appendChild(overviewTab);
-
     if(hasFirebaseSync && typeof APPOINTMENTS_PATH !== 'undefined' && APPOINTMENTS_PATH){
       const pending = appointments.filter(a => !a.linked && a.status !== 'done').length;
       const agendaTab = document.createElement('div');
       agendaTab.className = 'wh-tab' + (showAgenda ? ' active' : '');
-      agendaTab.innerHTML = `<span class="wh-tab-name-text">📅 Agenda</span>` + (pending ? `<span class="wh-count">${pending} new</span>` : '');
+      agendaTab.innerHTML = `<span class="wh-tab-name-text">📅 Agenda</span>` + (pending ? `<span class="wh-count">${pending} nieuw</span>` : '');
       agendaTab.addEventListener('click', () => {
         showAgenda = true;
         showOverview = false;
@@ -1752,6 +1742,16 @@
       });
       el.appendChild(agendaTab);
     }
+
+    const overviewTab = document.createElement('div');
+    overviewTab.className = 'wh-tab' + (showOverview ? ' active' : '');
+    overviewTab.innerHTML = `<span class="wh-tab-name-text">📊 Overzicht</span>`;
+    overviewTab.addEventListener('click', () => {
+      showOverview = true;
+      showAgenda = false;
+      render();
+    });
+    el.appendChild(overviewTab);
 
     state.warehouses.forEach(w => {
       const spots = warehouseSpots(w);
@@ -1761,8 +1761,8 @@
       tab.innerHTML = `
         <span class="wh-tab-name-text">${escapeHtml(w.name)}</span>
         <span class="wh-count">${occ}/${spots.length}</span>
-        <span class="wh-tab-edit" data-edit-wh="${w.id}" title="Rename warehouse">✎</span>
-        <span class="wh-tab-del" data-del-wh="${w.id}" title="Remove warehouse">✕</span>
+        <span class="wh-tab-edit" data-edit-wh="${w.id}" title="Loods instellingen">✎</span>
+        <span class="wh-tab-del" data-del-wh="${w.id}" title="Loods verwijderen">✕</span>
       `;
       tab.addEventListener('click', (e) => {
         if(e.target.closest('[data-del-wh]') || e.target.closest('[data-edit-wh]')) return;
@@ -1777,7 +1777,7 @@
     addBtn.className = 'wh-tab-add';
     addBtn.id = 'addWarehouseBtn';
     addBtn.textContent = '+';
-    addBtn.title = 'Add warehouse';
+    addBtn.title = 'Loods toevoegen';
     el.appendChild(addBtn);
   }
 
@@ -1793,42 +1793,42 @@
     function layoutChipHtml(){
       return `
         <div class="type-row" id="layoutRow">
-          <div class="type-chip ${layout==='aisle'?'active':''}" data-layout="aisle">Aisle (indoor, two-sided)</div>
-          <div class="type-chip ${layout==='single'?'active':''}" data-layout="single">Single row (outdoor)</div>
+          <div class="type-chip ${layout==='aisle'?'active':''}" data-layout="aisle">Pad (binnen, twee kanten)</div>
+          <div class="type-chip ${layout==='single'?'active':''}" data-layout="single">Enkele rij (buiten)</div>
         </div>
       `;
     }
     function doorChipHtml(){
       return `
         <div class="type-row" id="doorRow">
-          <div class="type-chip ${!aisleDoor?'active':''}" data-door="">No door marker</div>
-          <div class="type-chip ${aisleDoor==='left'?'active':''}" data-door="left">Door on left</div>
-          <div class="type-chip ${aisleDoor==='right'?'active':''}" data-door="right">Door on right</div>
+          <div class="type-chip ${!aisleDoor?'active':''}" data-door="">Geen deurmarkering</div>
+          <div class="type-chip ${aisleDoor==='left'?'active':''}" data-door="left">Deur links</div>
+          <div class="type-chip ${aisleDoor==='right'?'active':''}" data-door="right">Deur rechts</div>
         </div>
       `;
     }
 
     body.innerHTML = `
-      <h3>Warehouse settings</h3>
+      <h3>Loods instellingen</h3>
       <div class="field">
-        <label>Warehouse name</label>
+        <label>Naam loods</label>
         <input type="text" id="fWhName" value="${escapeAttr(w.name)}" />
       </div>
       <div class="field">
-        <label>Purpose / description (optional)</label>
-        <input type="text" id="fWhPurpose" value="${escapeAttr(w.purpose || '')}" placeholder="e.g. Caravans & folding trailers" />
+        <label>Doel / omschrijving (optioneel)</label>
+        <input type="text" id="fWhPurpose" value="${escapeAttr(w.purpose || '')}" placeholder="bijv. Caravans & vouwwagens" />
       </div>
       <div class="field">
-        <label>Layout</label>
+        <label>Indeling</label>
         <div id="layoutWrap">${layoutChipHtml()}</div>
       </div>
       <div class="field" id="doorField" style="${layout==='single'?'display:none;':''}">
-        <label>Door position on aisle</label>
+        <label>Positie deur op het pad</label>
         <div id="doorWrap">${doorChipHtml()}</div>
       </div>
       <div class="modal-actions">
-        <button class="btn ghost" id="whCancelBtn">Cancel</button>
-        <button class="btn" id="whSaveBtn">Save</button>
+        <button class="btn ghost" id="whCancelBtn">Annuleren</button>
+        <button class="btn" id="whSaveBtn">Opslaan</button>
       </div>
     `;
     overlay.classList.add('show');
@@ -1926,14 +1926,14 @@
     el.innerHTML = Object.entries(TYPES).map(([key,t]) =>
       `<div class="legend-item"><span class="swatch" style="background:${t.color}"></span>${t.label}</div>`
     ).join('')
-      + `<div class="legend-item"><span class="swatch" style="background:var(--paper-line)"></span>Empty bay</div>`
-      + `<div class="legend-item"><span class="swatch" style="background:var(--trailer)"></span>⏱ Stored 1yr+</div>`;
+      + `<div class="legend-item"><span class="swatch" style="background:var(--paper-line)"></span>Lege plek</div>`
+      + `<div class="legend-item"><span class="swatch" style="background:var(--trailer)"></span>⏱ Langer dan 1 jaar</div>`;
   }
 
   function rowLabel(sideName, idx, hasAisle){
-    if(!hasAisle) return `Row ${idx+1}`;
-    if(idx === 0) return `${sideName} · row 1 (near aisle)`;
-    return `${sideName} · row ${idx+1} (back)`;
+    if(!hasAisle) return `Rij ${idx+1}`;
+    if(idx === 0) return `${sideName} · rij 1 (bij het pad)`;
+    return `${sideName} · rij ${idx+1} (achter)`;
   }
 
   function renderPlan(){
@@ -1953,25 +1953,25 @@
       // right side, farthest row first so it sits furthest from the aisle bar
       [...w.right].reverse().forEach((row, i) => {
         const realIdx = w.right.length - 1 - i;
-        plan.appendChild(renderRowBlock(row, 'Right', realIdx, w.right.length, 'right', 'R', true));
+        plan.appendChild(renderRowBlock(row, 'Rechts', realIdx, w.right.length, 'right', 'R', true));
       });
 
       const aisle = document.createElement('div');
       aisle.className = 'aisle-bar';
       let doorHtml = '';
-      if(w.aisleDoor === 'left') doorHtml = `<span class="aisle-door aisle-door-left" title="Door">${doorIconSvg(16)}</span>`;
-      if(w.aisleDoor === 'right') doorHtml = `<span class="aisle-door aisle-door-right" title="Door">${doorIconSvg(16)}</span>`;
-      aisle.innerHTML = `${doorHtml}<span class="aisle-label">AISLE</span>`;
+      if(w.aisleDoor === 'left') doorHtml = `<span class="aisle-door aisle-door-left" title="Deur">${doorIconSvg(16)}</span>`;
+      if(w.aisleDoor === 'right') doorHtml = `<span class="aisle-door aisle-door-right" title="Deur">${doorIconSvg(16)}</span>`;
+      aisle.innerHTML = `${doorHtml}<span class="aisle-label">PAD</span>`;
       plan.appendChild(aisle);
 
       // left side, row 1 nearest the aisle first
       w.left.forEach((row, i) => {
-        plan.appendChild(renderRowBlock(row, 'Left', i, w.left.length, 'left', 'L', true));
+        plan.appendChild(renderRowBlock(row, 'Links', i, w.left.length, 'left', 'L', true));
       });
     } else {
       // outdoor / single-row layout — no aisle, no left/right split
       w.left.forEach((row, i) => {
-        plan.appendChild(renderRowBlock(row, 'Row', i, w.left.length, 'left', '', false));
+        plan.appendChild(renderRowBlock(row, 'Rij', i, w.left.length, 'left', '', false));
       });
     }
 
@@ -1985,13 +1985,13 @@
 
     const head = document.createElement('div');
     head.className = 'row-head';
-    let actionsHtml = `<span class="add-spot-wrap"><button class="btn ghost small" data-add-spot="${row.id}">+ Add bay</button></span>`;
+    let actionsHtml = `<span class="add-spot-wrap"><button class="btn ghost small" data-add-spot="${row.id}">+ Plek toevoegen</button></span>`;
     if(idx === sideCount - 1){
       // controls live on the outermost (back) row
       if(sideCount > 1){
-        actionsHtml += `<button class="side-toggle" data-remove-row="${sideKey}">− remove row ${idx+1} (deletes its bays)</button>`;
+        actionsHtml += `<button class="side-toggle" data-remove-row="${sideKey}">− verwijder rij ${idx+1} (verwijdert de plekken erin)</button>`;
       } else {
-        actionsHtml += `<button class="side-toggle" data-add-row="${sideKey}">+ add another row</button>`;
+        actionsHtml += `<button class="side-toggle" data-add-row="${sideKey}">+ nog een rij toevoegen</button>`;
       }
     }
     const activeCount = row.spots.filter(s => !s.removed).length;
@@ -2031,11 +2031,11 @@
 
     if(spot.removed){
       el.className = 'spot gap';
-      el.title = 'Removed bay — click to reuse this spot';
+      el.title = 'Verwijderde plek — klik om opnieuw te gebruiken';
       el.innerHTML = `
-        <div class="spot-del" data-hard-remove="${spot.id}" title="Delete this slot permanently">✕</div>
+        <div class="spot-del" data-hard-remove="${spot.id}" title="Deze plek permanent verwijderen">✕</div>
         <span class="spot-id" style="align-self:flex-start">${escapeHtml(tag)}</span>
-        <span class="gap-label">removed<br/>tap to reuse</span>
+        <span class="gap-label">verwijderd<br/>tik om te hergebruiken</span>
       `;
       el.addEventListener('click', (e) => {
         if(e.target.closest('[data-hard-remove]')) return;
@@ -2047,9 +2047,9 @@
 
     if(spot.isDoor){
       el.className = 'spot door';
-      el.title = 'Door — click to edit';
+      el.title = 'Deur — klik om te bewerken';
       el.innerHTML = `
-        <div class="spot-del" data-remove-spot="${spot.id}" title="Remove this bay">✕</div>
+        <div class="spot-del" data-remove-spot="${spot.id}" title="Plek verwijderen">✕</div>
         <span class="spot-id" style="align-self:flex-start">${escapeHtml(tag)}</span>
         <span class="door-label">${doorIconSvg(20)}<br/>${escapeHtml(spot.label && spot.label.trim() ? spot.label.trim() : 'door')}</span>
       `;
@@ -2061,22 +2061,22 @@
     }
 
     if(spot.occupants && spot.occupants.length > 0){
-      const t = TYPES[spot.type] || { color:'#7A7A7A', label:'Unknown' };
+      const t = TYPES[spot.type] || { color:'#7A7A7A', label:'Onbekend' };
       const longStay = spot.occupants.some(o => isLongStay(o.since));
       const anyAway = spot.occupants.some(o => o.away);
       el.className = 'spot' + (longStay ? ' long-stay' : '') + (anyAway ? ' is-away' : '');
       el.style.background = hexAlpha(t.color, 0.16);
       el.style.borderColor = t.color;
       const multi = spot.occupants.length > 1;
-      const primary = multi ? `${spot.occupants.length}× ${t.label}` : (spot.occupants[0].name || 'Unnamed');
+      const primary = multi ? `${spot.occupants.length}× ${t.label}` : (spot.occupants[0].name || 'Naam onbekend');
       const single = spot.occupants[0];
       const sub = multi
-        ? spot.occupants.map(o => o.name || 'Unnamed').join(', ')
+        ? spot.occupants.map(o => o.name || 'Naam onbekend').join(', ')
         : [single.reg, single.since].filter(Boolean).join(' · ');
       el.innerHTML = `
-        <div class="spot-del" data-clear="${spot.id}" title="Clear bay">✕</div>
-        ${longStay ? `<div class="long-stay-badge" title="Stored over a year">⏱</div>` : ''}
-        ${anyAway ? `<div class="away-badge" title="Currently away — temporarily picked up">OUT</div>` : ''}
+        <div class="spot-del" data-clear="${spot.id}" title="Plek leegmaken">✕</div>
+        ${longStay ? `<div class="long-stay-badge" title="Langer dan een jaar gestald">⏱</div>` : ''}
+        ${anyAway ? `<div class="away-badge" title="Momenteel weg — tijdelijk opgehaald">WEG</div>` : ''}
         <div class="spot-id">${escapeHtml(tag)}</div>
         <div>
           <div class="spot-label">${escapeHtml(primary)}</div>
@@ -2087,7 +2087,7 @@
     } else {
       el.className = 'spot empty';
       el.innerHTML = `
-        <div class="spot-del" data-remove-spot="${spot.id}" title="Remove this bay">✕</div>
+        <div class="spot-del" data-remove-spot="${spot.id}" title="Plek verwijderen">✕</div>
         <span class="plus">+</span>
         ${spot.label ? `<div class="spot-id" style="align-self:flex-start">${escapeHtml(spot.label)}</div>` : ''}
       `;
@@ -2268,10 +2268,10 @@
     let selectedType = row.spots.length ? row.spots[row.spots.length - 1].type : order[0];
 
     body.innerHTML = `
-      <h3>Add bay(s)</h3>
-      <div class="sub">Add one or more empty bays to this row — assign owners to them later.</div>
+      <h3>Plek(ken) toevoegen</h3>
+      <div class="sub">Voeg één of meer lege plekken toe aan deze rij — wijs later eigenaren toe.</div>
       <div class="field">
-        <label>Vehicle type</label>
+        <label>Type</label>
         <div class="type-row" id="quickTypeRow">
           ${order.map(key => {
             const t = TYPES[key];
@@ -2282,12 +2282,12 @@
         </div>
       </div>
       <div class="field">
-        <label>Quantity</label>
+        <label>Aantal</label>
         <input type="number" id="quickQty" min="1" max="20" value="1" />
       </div>
       <div class="modal-actions">
-        <button class="btn ghost" id="quickCancelBtn">Cancel</button>
-        <button class="btn" id="quickAddBtn">Add</button>
+        <button class="btn ghost" id="quickCancelBtn">Annuleren</button>
+        <button class="btn" id="quickAddBtn">Toevoegen</button>
       </div>
     `;
 
@@ -2335,19 +2335,19 @@
       : [{ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'' }];
 
     body.innerHTML = `
-      <h3>${isEditing ? 'Edit bay' : 'Add / edit bay'}</h3>
-      <div class="sub">Bay type sets the footprint shown on the plan.</div>
+      <h3>${isEditing ? 'Plek bewerken' : 'Plek toevoegen / bewerken'}</h3>
+      <div class="sub">Het type bepaalt de afmeting op de plattegrond.</div>
       <div class="field">
-        <label>Bay name / number (optional)</label>
+        <label>Pleknaam / nummer (optioneel)</label>
         <input type="text" id="fLabel" value="${escapeAttr(spot.label || '')}" placeholder="${escapeAttr(auto)}" />
       </div>
       <div class="field" style="display:flex;align-items:center;gap:8px;">
         <input type="checkbox" id="fIsDoor" ${spot.isDoor ? 'checked' : ''} style="width:16px;height:16px;flex-shrink:0;" />
-        <label style="margin:0;text-transform:none;letter-spacing:0;font-weight:600;font-size:12.5px;color:var(--ink);" for="fIsDoor">This bay is a door (not for storage)</label>
+        <label style="margin:0;text-transform:none;letter-spacing:0;font-weight:600;font-size:12.5px;color:var(--ink);" for="fIsDoor">Deze plek is een deur (niet voor opslag)</label>
       </div>
       <div id="storageFields" style="${spot.isDoor ? 'display:none;' : ''}">
         <div class="field">
-          <label>Vehicle type &nbsp;<a href="#" id="manageTypesLink" style="font-weight:400;text-transform:none;letter-spacing:0;">manage types</a></label>
+          <label>Type &nbsp;<a href="#" id="manageTypesLink" style="font-weight:400;text-transform:none;letter-spacing:0;">typen beheren</a></label>
           <div class="type-row" id="typeRow">
             ${order.map(key => {
               const t = TYPES[key];
@@ -2358,19 +2358,19 @@
           </div>
         </div>
         <div class="field">
-          <label>Length (m)</label>
+          <label>Lengte (m)</label>
           <input type="number" id="fLength" min="2" max="15" step="0.1" value="${spot.length}" />
         </div>
         <div class="field">
-          <label>Vehicles parked here</label>
+          <label>Voertuigen op deze plek</label>
           <div class="occ-list" id="occList"></div>
-          <button class="btn ghost small" id="addOccBtn">+ Add another vehicle in this bay</button>
+          <button class="btn ghost small" id="addOccBtn">+ Nog een voertuig op deze plek</button>
         </div>
       </div>
       <div class="modal-actions">
-        ${isEditing ? '<button class="btn danger" id="clearBtn">Clear bay</button>' : ''}
-        <button class="btn ghost" id="cancelBtn">Cancel</button>
-        <button class="btn" id="saveBtn">Save</button>
+        ${isEditing ? '<button class="btn danger" id="clearBtn">Plek leegmaken</button>' : ''}
+        <button class="btn ghost" id="cancelBtn">Annuleren</button>
+        <button class="btn" id="saveBtn">Opslaan</button>
       </div>
     `;
 
@@ -2379,14 +2379,14 @@
       listEl.innerHTML = occDraft.map((o, idx) => `
         <div class="occ-row" data-occ-idx="${idx}">
           <div class="occ-row-top">
-            <input type="text" class="occ-name" placeholder="Owner / customer name" value="${escapeAttr(o.name)}" />
-            <input type="text" class="occ-reg" placeholder="Reg." value="${escapeAttr(o.reg)}" />
-            <input type="date" class="occ-since" value="${escapeAttr(o.since)}" title="Stored since" />
-            <button class="occ-remove" data-remove-occ="${idx}" title="Remove this vehicle">✕</button>
+            <input type="text" class="occ-name" placeholder="Naam eigenaar / klant" value="${escapeAttr(o.name)}" />
+            <input type="text" class="occ-reg" placeholder="Kenteken" value="${escapeAttr(o.reg)}" />
+            <input type="date" class="occ-since" value="${escapeAttr(o.since)}" title="Gestald sinds" />
+            <button class="occ-remove" data-remove-occ="${idx}" title="Dit voertuig verwijderen">✕</button>
           </div>
-          <input type="text" class="occ-objnum" placeholder="Object nummer (matches booking requests)" value="${escapeAttr(o.objectNummer)}" style="margin-bottom:6px;" />
-          <input type="text" class="occ-notes" placeholder="Notes" value="${escapeAttr(o.notes)}" />
-          <label class="occ-away-toggle"><input type="checkbox" class="occ-away" ${o.away?'checked':''} /> Currently away (picked up temporarily, still reserved)</label>
+          <input type="text" class="occ-objnum" placeholder="Object nummer (komt overeen met aanvragen)" value="${escapeAttr(o.objectNummer)}" style="margin-bottom:6px;" />
+          <input type="text" class="occ-notes" placeholder="Notities" value="${escapeAttr(o.notes)}" />
+          <label class="occ-away-toggle"><input type="checkbox" class="occ-away" ${o.away?'checked':''} /> Momenteel weg (tijdelijk opgehaald, plek blijft gereserveerd)</label>
         </div>
       `).join('');
       listEl.querySelectorAll('.occ-row').forEach(rowEl => {
@@ -2485,8 +2485,8 @@
       <h3>${escapeHtml(title)}</h3>
       <div class="sub">${escapeHtml(message)}</div>
       <div class="modal-actions">
-        <button class="btn ghost" id="confirmCancelBtn">Cancel</button>
-        <button class="btn danger" id="confirmYesBtn">Delete</button>
+        <button class="btn ghost" id="confirmCancelBtn">Annuleren</button>
+        <button class="btn danger" id="confirmYesBtn">Verwijderen</button>
       </div>
     `;
     overlay.classList.add('show');
@@ -2522,25 +2522,25 @@
           <div class="type-manage-row" data-row="${key}">
             <input type="color" class="tm-color" data-key="${key}" value="${t.color}" />
             <input type="text" class="tm-label" data-key="${key}" value="${escapeAttr(t.label)}" />
-            <input type="number" class="tm-length" data-key="${key}" value="${t.length}" min="1" max="20" step="0.1" title="Default length (m)" />
-            <span class="tm-usage">${usage} bay${usage===1?'':'s'}</span>
-            <button class="tm-del" data-del-type="${key}" ${canDelete?'':'disabled'} title="${canDelete?'Remove this type':'Cannot remove: still in use, or the only type left'}">✕</button>
+            <input type="number" class="tm-length" data-key="${key}" value="${t.length}" min="1" max="20" step="0.1" title="Standaardlengte (m)" />
+            <span class="tm-usage">${usage} plek${usage===1?'':'ken'}</span>
+            <button class="tm-del" data-del-type="${key}" ${canDelete?'':'disabled'} title="${canDelete?'Dit type verwijderen':'Kan niet verwijderen: nog in gebruik, of het enige overgebleven type'}">✕</button>
           </div>
         `;
       }).join('');
 
       body.innerHTML = `
-        <h3>Manage vehicle types</h3>
-        <div class="sub">Rename existing types, tweak colors and default lengths, or add your own storage categories.</div>
+        <h3>Voertuigtypen beheren</h3>
+        <div class="sub">Hernoem bestaande typen, pas kleuren en standaardlengtes aan, of voeg je eigen categorieën toe.</div>
         <div id="typesList">${listHtml}</div>
         <div class="add-type-row">
           <input type="color" id="newTypeColor" value="#5B7A8C" />
-          <input type="text" class="tm-label" id="newTypeLabel" placeholder="e.g. Boat trailer" style="flex:1;" />
-          <input type="number" class="tm-length" id="newTypeLength" placeholder="5" min="1" max="20" step="0.1" title="Default length (m)" />
-          <button class="btn small" id="addTypeBtn">+ Add</button>
+          <input type="text" class="tm-label" id="newTypeLabel" placeholder="bijv. Boottrailer" style="flex:1;" />
+          <input type="number" class="tm-length" id="newTypeLength" placeholder="5" min="1" max="20" step="0.1" title="Standaardlengte (m)" />
+          <button class="btn small" id="addTypeBtn">+ Toevoegen</button>
         </div>
         <div class="modal-actions">
-          <button class="btn" id="doneTypesBtn">Done</button>
+          <button class="btn" id="doneTypesBtn">Klaar</button>
         </div>
       `;
 
@@ -2569,7 +2569,7 @@
         btn.addEventListener('click', () => {
           if(btn.disabled) return;
           const key = btn.getAttribute('data-del-type');
-          if(!confirm(`Delete the "${TYPES[key].label}" type? This can't be undone.`)) return;
+          if(!confirm(`Type "${TYPES[key].label}" verwijderen? Dit kan niet ongedaan worden gemaakt.`)) return;
           delete TYPES[key];
           state.warehouses.forEach(w => {
             if(Array.isArray(w.recommended)) w.recommended = w.recommended.filter(k => k !== key);
@@ -2642,8 +2642,8 @@
     if(hardRemoveBtn){
       const id = hardRemoveBtn.getAttribute('data-hard-remove');
       confirmAction(
-        'Delete this bay slot?',
-        `This permanently removes the slot from the plan (unlike "remove", it can't be tapped to reuse afterward). This can't be undone.`,
+        'Deze plek verwijderen?',
+        `Dit verwijdert de plek permanent van de plattegrond (in tegenstelling tot "verwijderen" kan hij daarna niet meer worden hergebruikt). Dit kan niet ongedaan worden gemaakt.`,
         () => {
           warehouseRows(activeWarehouse()).forEach(r => { r.spots = r.spots.filter(s => s.id !== id); });
           render(); save();
@@ -2667,8 +2667,8 @@
         const doIt = () => { w[side].pop(); render(); save(); };
         if(lastRow.spots.length > 0){
           confirmAction(
-            'Remove this row?',
-            `This deletes the row and all ${lastRow.spots.length} bay${lastRow.spots.length===1?'':'s'} in it, including any occupants. This can't be undone.`,
+            'Deze rij verwijderen?',
+            `Dit verwijdert de rij en alle ${lastRow.spots.length} plek${lastRow.spots.length===1?'':'ken'} erin, inclusief eventuele bewoners. Dit kan niet ongedaan worden gemaakt.`,
             doIt
           );
         } else {
@@ -2690,8 +2690,8 @@
       const id = delWhBtn.getAttribute('data-del-wh');
       const wh = state.warehouses.find(w => w.id === id);
       confirmAction(
-        'Remove warehouse?',
-        `This deletes "${wh ? wh.name : 'this warehouse'}" and everything stored in it — bays, occupants, everything. This can't be undone.`,
+        'Loods verwijderen?',
+        `Dit verwijdert "${wh ? wh.name : 'deze loods'}" en alles wat erin is opgeslagen — plekken, bewoners, alles. Dit kan niet ongedaan worden gemaakt.`,
         () => {
           const removingActive = id === state.activeWarehouseId;
           state.warehouses = state.warehouses.filter(w => w.id !== id);
@@ -2703,7 +2703,7 @@
     }
     const addWhBtn = e.target.closest('#addWarehouseBtn');
     if(addWhBtn){
-      const wh = defaultWarehouse({ name:`Warehouse ${state.warehouses.length + 1}`, left:1, right:1 });
+      const wh = defaultWarehouse({ name:`Loods ${state.warehouses.length + 1}`, left:1, right:1 });
       state.warehouses.push(wh);
       state.activeWarehouseId = wh.id;
       render(); save();
@@ -2726,31 +2726,31 @@
         <div class="print-bay-box print-door">
           ${doorIconSvg(14)}
           <div class="pbb-tag">${escapeHtml(tag)}</div>
-          <div class="pbb-sub">door</div>
+          <div class="pbb-sub">deur</div>
         </div>
       `;
     }
 
-    const t = TYPES[spot.type] || { label: 'Unknown' };
+    const t = TYPES[spot.type] || { label: 'Onbekend' };
     if(!spot.occupants || spot.occupants.length === 0){
       return `
         <div class="print-bay-box print-empty-box">
           <div class="pbb-tag">${escapeHtml(tag)}</div>
-          <div class="pbb-sub">${escapeHtml(t.label)}<br/>empty</div>
+          <div class="pbb-sub">${escapeHtml(t.label)}<br/>leeg</div>
         </div>
       `;
     }
 
-    const names = spot.occupants.map(o => o.name || 'Unnamed').join(', ');
+    const names = spot.occupants.map(o => o.name || 'Naam onbekend').join(', ');
     const single = spot.occupants.length === 1 ? spot.occupants[0] : null;
-    const multiNotes = !single ? spot.occupants.filter(o => o.notes).map(o => `${o.name || 'Unnamed'}: ${o.notes}`) : [];
+    const multiNotes = !single ? spot.occupants.filter(o => o.notes).map(o => `${o.name || 'Naam onbekend'}: ${o.notes}`) : [];
     return `
       <div class="print-bay-box">
         <div class="pbb-tag">${escapeHtml(tag)}</div>
         <div class="pbb-type">${escapeHtml(t.label)}${spot.occupants.length > 1 ? ` ×${spot.occupants.length}` : ''}</div>
         <div class="pbb-name">${escapeHtml(names)}</div>
         ${single && single.reg ? `<div class="pbb-reg">${escapeHtml(single.reg)}</div>` : ''}
-        ${single && single.since ? `<div class="pbb-since">since ${escapeHtml(single.since)}</div>` : ''}
+        ${single && single.since ? `<div class="pbb-since">sinds ${escapeHtml(single.since)}</div>` : ''}
         ${single && single.notes ? `<div class="pbb-notes">${escapeHtml(single.notes)}</div>` : ''}
         ${multiNotes.length ? `<div class="pbb-notes">${escapeHtml(multiNotes.join(' · '))}</div>` : ''}
       </div>
@@ -2771,10 +2771,10 @@
     const stamp = new Date().toLocaleDateString();
 
     let html = `
-      <h1>${escapeHtml(state.facilityName || 'Storage Sites')}</h1>
-      <div class="print-meta">Printed ${escapeHtml(stamp)}</div>
+      <h1>${escapeHtml(state.facilityName || 'Opslagsites')}</h1>
+      <div class="print-meta">Afgedrukt op ${escapeHtml(stamp)}</div>
       <div class="print-summary">
-        <div><strong>${spots.length}</strong> bays</div>
+        <div><strong>${spots.length}</strong> plekken</div>
         <div><strong>${occupied}</strong> in gebruik</div>
         <div><strong>${spots.length - occupied}</strong> vrij</div>
       </div>
@@ -2785,27 +2785,27 @@
       const totalBays = warehouseSpots(w).length;
 
       const doorNotes = [];
-      if(w.aisleDoor) doorNotes.push(`aisle door (${w.aisleDoor})`);
+      if(w.aisleDoor) doorNotes.push(`deur op pad (${w.aisleDoor === 'left' ? 'links' : 'rechts'})`);
       const doorBays = warehouseRows(w).flatMap(r => r.spots).filter(s => s.isDoor && !s.removed);
-      if(doorBays.length) doorNotes.push(`${doorBays.length} bay-door${doorBays.length===1?'':'s'}`);
+      if(doorBays.length) doorNotes.push(`${doorBays.length} deur${doorBays.length===1?'':'en'} op plek`);
 
       html += `<div class="print-warehouse">`;
       html += `<h2>${escapeHtml(w.name)}${w.purpose ? ' — ' + escapeHtml(w.purpose) : ''}${doorNotes.length ? ` <span style="font-weight:400;font-size:11px;">(${escapeHtml(doorNotes.join(', '))})</span>` : ''}</h2>`;
 
       if(totalBays === 0 && doorBays.length === 0){
-        html += `<div class="print-empty">No bays yet in this warehouse.</div>`;
+        html += `<div class="print-empty">Nog geen plekken in deze loods.</div>`;
       } else if(hasAisle){
         [...w.right].reverse().forEach((row, i) => {
           const realIdx = w.right.length - 1 - i;
-          html += printRowHtml(row, `Right · row ${realIdx+1}`, 'R');
+          html += printRowHtml(row, `Rechts · rij ${realIdx+1}`, 'R');
         });
-        html += `<div class="print-aisle">Aisle${w.aisleDoor ? ` — door on ${w.aisleDoor}` : ''}</div>`;
+        html += `<div class="print-aisle">Pad${w.aisleDoor ? ` — deur ${w.aisleDoor === 'left' ? 'links' : 'rechts'}` : ''}</div>`;
         w.left.forEach((row, i) => {
-          html += printRowHtml(row, `Left · row ${i+1}`, 'L');
+          html += printRowHtml(row, `Links · rij ${i+1}`, 'L');
         });
       } else {
         w.left.forEach((row, i) => {
-          html += printRowHtml(row, `Row ${i+1}`, '');
+          html += printRowHtml(row, `Rij ${i+1}`, '');
         });
       }
 
@@ -2875,15 +2875,15 @@
 
         if(shrunk){
           confirmAction(
-            'This file looks smaller than your current data',
-            `What's currently loaded has ${cur.bays} bays (${cur.occ} occupied). The file you're importing has ${inc.bays} bays (${inc.occ} occupied). Importing replaces everything currently loaded with this file. A safety backup of your current data is taken first either way — but make sure this is really the file you meant to import.`,
+            'Dit bestand lijkt kleiner dan je huidige gegevens',
+            `Wat er nu geladen is heeft ${cur.bays} plekken (${cur.occ} in gebruik). Het bestand dat je importeert heeft ${inc.bays} plekken (${inc.occ} in gebruik). Importeren vervangt alles wat nu geladen is door dit bestand. Er wordt hoe dan ook eerst een veiligheidsback-up van je huidige gegevens gemaakt — maar controleer of dit echt het bedoelde bestand is.`,
             applyImport
           );
         } else {
           applyImport();
         }
       }catch(err){
-        setStatus('import failed — file was not a valid export');
+        setStatus('importeren mislukt — bestand was geen geldige export');
       }
     };
     reader.readAsText(file);
@@ -2904,7 +2904,7 @@
     const sel = document.getElementById('searchWhFilter');
     if(!sel) return;
     const current = sel.value;
-    sel.innerHTML = '<option value="all">All warehouses</option>' +
+    sel.innerHTML = '<option value="all">Alle loodsen</option>' +
       state.warehouses.map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('');
     if([...sel.options].some(o => o.value === current)) sel.value = current;
   }
@@ -2942,7 +2942,7 @@
     state.warehouses.forEach(w => {
       if(filters.warehouseId !== 'all' && w.id !== filters.warehouseId) return;
       const hasAisle = w.layout !== 'single';
-      const sides = hasAisle ? [['left','Left','L'],['right','Right','R']] : [['left','Row','']];
+      const sides = hasAisle ? [['left','Links','L'],['right','Rechts','R']] : [['left','Rij','']];
       sides.forEach(([key, sideName, tagPrefix]) => {
         w[key].forEach((row, rowIdx) => {
           row.spots.forEach((spot, sIdx) => {
@@ -2980,30 +2980,30 @@
       return;
     }
     if(results.length === 0){
-      el.innerHTML = `<div class="search-empty">No matches for "${escapeHtml(query)}"</div>`;
+      el.innerHTML = `<div class="search-empty">Geen resultaten voor "${escapeHtml(query)}"</div>`;
       el.classList.add('show');
       return;
     }
     el.innerHTML = results.map((r, i) => {
-      const t = TYPES[r.spot.type] || { color:'#7A7A7A', label:'Unknown' };
+      const t = TYPES[r.spot.type] || { color:'#7A7A7A', label:'Onbekend' };
       const tag = displayTag(r.spot, r.tagPrefix);
       let who, reg = '';
       if(r.occupant){
-        who = r.occupant.name || 'Unnamed';
+        who = r.occupant.name || 'Naam onbekend';
         reg = r.occupant.reg || '';
       } else if(r.spot.isDoor){
-        who = 'Door' + (r.spot.label ? ' — ' + r.spot.label : '');
+        who = 'Deur' + (r.spot.label ? ' — ' + r.spot.label : '');
       } else if(r.spot.occupants && r.spot.occupants.length > 1){
-        who = `${r.spot.occupants.length} vehicles in this bay`;
+        who = `${r.spot.occupants.length} voertuigen op deze plek`;
       } else {
-        who = r.spot.label ? '(unassigned bay)' : 'Unassigned';
+        who = r.spot.label ? '(niet-toegewezen plek)' : 'Niet toegewezen';
       }
       return `
         <div class="search-result" data-result="${i}">
           <span class="dot" style="background:${t.color}"></span>
           <div class="search-result-main">
             <div class="search-result-name">${escapeHtml(who)}${reg ? ' · ' + escapeHtml(reg) : ''}</div>
-            <div class="search-result-meta">${escapeHtml(r.warehouse.name)} · bay ${escapeHtml(tag)} · ${t.label}</div>
+            <div class="search-result-meta">${escapeHtml(r.warehouse.name)} · plek ${escapeHtml(tag)} · ${t.label}</div>
           </div>
         </div>
       `;
