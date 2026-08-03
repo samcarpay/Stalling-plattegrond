@@ -39,15 +39,15 @@
 //      sync automatically whenever you're online.
 // ─────────────────────────────────────────────────────────────────
 
-const FIREBASE_ENABLED = true;
+const FIREBASE_ENABLED = false;
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAM7A6huZzCnTiGgXymOpS-3uzelzn0gjI",
-  databaseURL: "https://stalling-plattegrond-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "stalling-plattegrond",
+  apiKey: "",
+  databaseURL: "",
+  projectId: "",
 };
 
-const SYNC_PATH = "Plattegrond-111ws-qbh3Tm791";
+const SYNC_PATH = "YOUR-PRIVATE-PATH-HERE";
 
 // ─────────────────────────────────────────────────────────────────
 // PIN GATE (optional)
@@ -67,4 +67,58 @@ const SYNC_PATH = "Plattegrond-111ws-qbh3Tm791";
 // entirely — the app then behaves exactly as before.
 // ─────────────────────────────────────────────────────────────────
 
-const APP_PIN = "0808";
+const APP_PIN = "";
+
+// ─────────────────────────────────────────────────────────────────
+// AGENDA / PICKUP APPOINTMENTS (optional)
+//
+// Lets a booking form on your public website (a separate file — see
+// booking-widget.html) drop pickup requests straight into a new
+// "Agenda" tab in this app, grouped by week. You link each request to
+// the actual bay yourself using the search you already have.
+//
+// This needs its own small setup, on top of the sync setup above,
+// because the booking form is PUBLIC (anyone can submit a request) but
+// your storage data must stay PRIVATE. Two separate things make that
+// safe:
+//   - Appointments live at their own path (set below), not mixed into
+//     your private data.
+//   - This app signs itself in anonymously (invisible to you, no
+//     password) so the Firebase rule can tell "this app" apart from
+//     "the public booking form" — the form can only ADD new requests,
+//     it can never read existing ones.
+//
+// To turn it on:
+//   1. In the Firebase console: Build → Authentication → Get started →
+//      Sign-in method tab → Anonymous → Enable.
+//   2. Go to Realtime Database → Rules tab, and add a second entry
+//      alongside your existing one (don't remove your existing rule —
+//      just add this as a sibling inside the same "rules": { ... }):
+//
+//      {
+//        "rules": {
+//          "YOUR-PRIVATE-PATH-HERE": {
+//            ".read": true,
+//            ".write": true
+//          },
+//          "YOUR-APPOINTMENTS-PATH-HERE": {
+//            ".read": "auth != null",
+//            ".write": true
+//          }
+//        }
+//      }
+//
+//      Replace YOUR-APPOINTMENTS-PATH-HERE with a plain, short, fixed
+//      name (e.g. "pickup-appointments") — it does NOT need to be a
+//      secret, since the rule already keeps it write-only for the
+//      public and read-only for this signed-in app.
+//   3. Set APPOINTMENTS_PATH below to that exact same name.
+//   4. Re-upload this file. Reload the app — an "📅 Agenda" tab
+//      appears automatically once this is filled in.
+//   5. Open booking-widget.html for the last step (adding the actual
+//      form to your website).
+//
+// Leave this blank to turn the whole feature off — nothing else changes.
+// ─────────────────────────────────────────────────────────────────
+
+const APPOINTMENTS_PATH = "";

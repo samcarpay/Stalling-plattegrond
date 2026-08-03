@@ -287,6 +287,18 @@
   .overview-table tbody tr.ov-row:hover{background:var(--paper);}
   .ov-door-note{font-size:11px;color:var(--ink-faint);}
 
+  /* ---------- agenda ---------- */
+  .agenda-card{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:10px 12px;margin-bottom:8px;
+  }
+  .agenda-card-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;}
+  .agenda-date{font-family:var(--font-display);font-size:11px;color:var(--ink-soft);}
+  .agenda-name{font-weight:700;font-size:13.5px;color:var(--ink);margin-top:2px;}
+  .agenda-sub{font-size:11.5px;color:var(--ink-soft);margin-top:1px;}
+  .agenda-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;}
+  .agenda-link{font-size:11.5px;color:var(--ink-soft);margin-top:8px;padding-top:8px;border-top:1px dashed var(--paper-line);}
+
   /* ---------- warehouse plan ---------- */
   /* single shared horizontal scroller so every row (and both sides) move together */
   .plan-scroll{overflow-x:auto;padding-bottom:6px;}
@@ -445,6 +457,13 @@
     font-size:9px;line-height:1;
     display:flex;align-items:center;justify-content:center;
   }
+  .spot.is-away{opacity:.7;}
+  .away-badge{
+    position:absolute;top:-7px;right:16px;
+    background:var(--ink);color:var(--card);
+    font-family:var(--font-display);font-size:8px;font-weight:700;letter-spacing:.05em;
+    padding:2px 5px;border-radius:2px;
+  }
 
   .add-spot-wrap{position:relative;flex-shrink:0;}
   .add-spot-btn{
@@ -556,6 +575,11 @@
   .occ-row-top .occ-reg{flex:1;}
   .occ-row-top .occ-since{flex:1;color:var(--ink-soft);font-size:11px;}
   .occ-row .occ-notes{width:100%;box-sizing:border-box;}
+  .occ-away-toggle{
+    display:flex;align-items:center;gap:6px;margin-top:5px;
+    font-size:10.5px;color:var(--ink-soft);cursor:pointer;
+  }
+  .occ-away-toggle input{width:13px;height:13px;cursor:pointer;}
   .occ-remove{
     flex-shrink:0;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);
     background:transparent;color:var(--ink-soft);font-size:11px;cursor:pointer;
@@ -706,6 +730,7 @@
      has real values in it. See firebase-config.js for setup notes. -->
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="firebase-config.js"></script>
 
 <script>
@@ -812,6 +837,7 @@
             s.occupants = s.occupant ? [s.occupant] : [];
           }
           delete s.occupant;
+          s.occupants.forEach(o => { if(typeof o.away !== 'boolean') o.away = false; });
         });
       });
     });
@@ -844,6 +870,18 @@
       firebase.initializeApp(firebaseConfig);
       syncRef = firebase.database().ref(typeof SYNC_PATH !== 'undefined' ? SYNC_PATH : 'storage-sites-data');
       syncDataRef = syncRef.child('data');
+
+      // Anonymous sign-in — needed so the appointments rule can tell "this
+      // app" apart from "the public booking form" (which never signs in).
+      // Harmless if you haven't set up the Agenda feature at all.
+      if(typeof APPOINTMENTS_PATH !== 'undefined' && APPOINTMENTS_PATH && firebase.auth){
+        firebase.auth().signInAnonymously().then(() => {
+          initAppointmentsSync();
+        }).catch((err) => {
+          console.error('Anonymous sign-in failed', err);
+        });
+      }
+
       syncDataRef.on('value', (snapshot) => {
         connected = true;
         clearTimeout(timeoutId);
@@ -881,6 +919,28 @@
       clearTimeout(timeoutId);
       console.error('Firebase sync failed to start', e);
       setStatus('sync failed to start: ' + (e && e.message ? e.message : e));
+    }
+  }
+
+  // ---------- agenda / appointments (from the public booking widget) ----------
+  let appointments = [];       // [{id, name, contact, vehicleDesc, date, notes, createdAt, linked:{warehouseId,spotId}|null, status}]
+  let appointmentsRef = null;
+  let showAgenda = false;      // UI-only, not persisted
+
+  function initAppointmentsSync(){
+    if(!hasFirebaseSync || typeof APPOINTMENTS_PATH === 'undefined' || !APPOINTMENTS_PATH) return;
+    try{
+      appointmentsRef = firebase.database().ref(APPOINTMENTS_PATH);
+      appointmentsRef.on('value', (snapshot) => {
+        const val = snapshot.val() || {};
+        appointments = Object.keys(val).map(k => ({ id: k, ...val[k] }));
+        renderTabs();
+        if(showAgenda) renderAgendaPage();
+      }, (error) => {
+        console.error('Appointments sync error', error);
+      });
+    }catch(e){
+      console.error('Appointments sync failed to start', e);
     }
   }
 
@@ -1114,7 +1174,13 @@
     document.getElementById('facilityName').value = state.facilityName;
     renderTabs();
     populateSearchWhFilter();
-    if(showOverview){
+    if(showAgenda){
+      document.getElementById('stats').innerHTML = '';
+      document.getElementById('globalStatLine').innerHTML = '';
+      document.getElementById('legend').innerHTML = '';
+      document.getElementById('whPurpose').innerHTML = '';
+      renderAgendaPage();
+    } else if(showOverview){
       renderOverviewStats();
       document.getElementById('legend').innerHTML = '';
       document.getElementById('whPurpose').innerHTML = '';
@@ -1236,6 +1302,192 @@
     wrap.appendChild(container);
   }
 
+  // ---------- agenda page ----------
+  function getWeekStart(dateStr){
+    const d = new Date(dateStr + 'T00:00:00');
+    if(isNaN(d.getTime())) return null;
+    const day = d.getDay();
+    const diff = (day === 0 ? -6 : 1 - day);
+    const monday = new Date(d);
+    monday.setDate(d.getDate() + diff);
+    return monday;
+  }
+
+  function findLinkedInfo(linked){
+    if(!linked) return null;
+    const w = state.warehouses.find(x => x.id === linked.warehouseId);
+    if(!w) return null;
+    for(const side of ['left','right']){
+      for(const row of w[side]){
+        const s = row.spots.find(sp => sp.id === linked.spotId);
+        if(s) return { warehouse: w, spot: s, side };
+      }
+    }
+    return null;
+  }
+
+  function renderAgendaPage(){
+    const wrap = document.getElementById('plan');
+    wrap.innerHTML = '';
+
+    if(!appointmentsRef){
+      wrap.innerHTML = `<div class="print-empty">Connecting…</div>`;
+      return;
+    }
+
+    const container = document.createElement('div');
+    container.className = 'overview';
+
+    const active = appointments.filter(a => a.status !== 'done');
+    if(active.length === 0){
+      container.innerHTML = `<div class="print-empty">No pickup appointments yet. They'll appear here as customers submit them through your website.</div>`;
+      wrap.appendChild(container);
+      return;
+    }
+
+    const weeks = {};
+    active.forEach(a => {
+      const monday = getWeekStart(a.date) || new Date(a.createdAt || Date.now());
+      const key = monday.toISOString().slice(0,10);
+      if(!weeks[key]) weeks[key] = { monday, items: [] };
+      weeks[key].items.push(a);
+    });
+    const weekKeys = Object.keys(weeks).sort();
+
+    weekKeys.forEach(key => {
+      const wk = weeks[key];
+      wk.items.sort((a,b) => (a.date||'').localeCompare(b.date||''));
+      const endDate = new Date(wk.monday);
+      endDate.setDate(endDate.getDate() + 6);
+      const section = document.createElement('div');
+      section.className = 'overview-section';
+      section.style.maxWidth = '640px';
+      section.innerHTML = `<h3 class="overview-h">Week of ${wk.monday.toLocaleDateString()} – ${endDate.toLocaleDateString()}</h3>`;
+
+      wk.items.forEach(a => {
+        const info = findLinkedInfo(a.linked);
+        const card = document.createElement('div');
+        card.className = 'agenda-card';
+        const away = info && info.spot.occupants && info.spot.occupants.some(o => o.away);
+        card.innerHTML = `
+          <div class="agenda-card-top">
+            <div>
+              <div class="agenda-date">${escapeHtml(a.date || '(no date given)')}</div>
+              <div class="agenda-name">${escapeHtml(a.name || 'Unnamed')}</div>
+              <div class="agenda-sub">${escapeHtml(a.vehicleDesc || '')}${a.contact ? ' · ' + escapeHtml(a.contact) : ''}</div>
+              ${a.notes ? `<div class="agenda-sub">${escapeHtml(a.notes)}</div>` : ''}
+            </div>
+            <div class="agenda-actions"></div>
+          </div>
+          <div class="agenda-link">
+            ${info
+              ? `Linked to <strong>${escapeHtml(info.warehouse.name)}</strong>, bay ${escapeHtml(displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R')))}${away ? ' — <span style="color:var(--ink);font-weight:700;">currently away</span>' : ''}`
+              : `<span style="color:var(--car);">Not linked to a bay yet</span>`
+            }
+          </div>
+        `;
+        const actionsEl = card.querySelector('.agenda-actions');
+        if(info){
+          const awayBtn = document.createElement('button');
+          awayBtn.className = 'btn ghost small';
+          awayBtn.textContent = away ? 'Mark returned' : 'Mark away';
+          awayBtn.addEventListener('click', () => {
+            info.spot.occupants.forEach(o => { o.away = !away; });
+            render(); save();
+          });
+          actionsEl.appendChild(awayBtn);
+        } else {
+          const linkBtn = document.createElement('button');
+          linkBtn.className = 'btn ghost small';
+          linkBtn.textContent = 'Link to bay';
+          linkBtn.addEventListener('click', () => openLinkAppointmentModal(a.id));
+          actionsEl.appendChild(linkBtn);
+        }
+        const doneBtn = document.createElement('button');
+        doneBtn.className = 'btn ghost small';
+        doneBtn.textContent = 'Mark done';
+        doneBtn.addEventListener('click', () => {
+          appointmentsRef.child(a.id).update({ status: 'done' });
+        });
+        actionsEl.appendChild(doneBtn);
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn ghost small';
+        delBtn.textContent = '✕';
+        delBtn.title = 'Delete this request';
+        delBtn.addEventListener('click', () => {
+          confirmAction('Delete this appointment request?', `This removes it permanently from the Agenda.`, () => {
+            appointmentsRef.child(a.id).remove();
+          });
+        });
+        actionsEl.appendChild(delBtn);
+        section.appendChild(card);
+      });
+
+      container.appendChild(section);
+    });
+
+    wrap.appendChild(container);
+  }
+
+  function openLinkAppointmentModal(appointmentId){
+    const appt = appointments.find(a => a.id === appointmentId);
+    if(!appt) return;
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal wide';
+    body.innerHTML = `
+      <h3>Link to a bay</h3>
+      <div class="sub">Requested by ${escapeHtml(appt.name || 'Unnamed')} — ${escapeHtml(appt.vehicleDesc || 'no vehicle description given')}</div>
+      <div class="field">
+        <label>Search your bays (name, registration, bay label)</label>
+        <input type="text" id="linkSearchInput" placeholder="Start typing…" />
+      </div>
+      <div id="linkResults" style="max-height:320px;overflow-y:auto;"></div>
+      <div class="modal-actions"><button class="btn ghost" id="linkCancelBtn">Cancel</button></div>
+    `;
+    overlay.classList.add('show');
+    const input = document.getElementById('linkSearchInput');
+    input.value = appt.vehicleDesc || appt.name || '';
+    input.focus();
+
+    function runSearch(){
+      const results = searchOccupiedBaysForLink(input.value);
+      const resEl = document.getElementById('linkResults');
+      if(results.length === 0){
+        resEl.innerHTML = `<div class="search-empty">No matches — try a different search.</div>`;
+        return;
+      }
+      resEl.innerHTML = results.map((r, i) => {
+        const t = TYPES[r.spot.type] || { color:'#7A7A7A', label:'Unknown' };
+        const tag = displayTag(r.spot, r.tagPrefix);
+        return `
+          <div class="search-result" data-link-result="${i}">
+            <span class="dot" style="background:${t.color}"></span>
+            <div class="search-result-main">
+              <div class="search-result-name">${escapeHtml(r.occupant.name || 'Unnamed')}${r.occupant.reg ? ' · ' + escapeHtml(r.occupant.reg) : ''}</div>
+              <div class="search-result-meta">${escapeHtml(r.warehouse.name)} · bay ${escapeHtml(tag)} · ${t.label}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      resEl.querySelectorAll('[data-link-result]').forEach(node => {
+        node.addEventListener('click', () => {
+          const r = results[parseInt(node.getAttribute('data-link-result'), 10)];
+          appointmentsRef.child(appointmentId).update({
+            linked: { warehouseId: r.warehouse.id, spotId: r.spot.id }
+          });
+          body.className = 'modal';
+          closeModal();
+        });
+      });
+    }
+    input.addEventListener('input', runSearch);
+    runSearch();
+
+    document.getElementById('linkCancelBtn').addEventListener('click', () => { body.className = 'modal'; closeModal(); });
+    overlay.addEventListener('click', (e) => { if(e.target === overlay){ body.className = 'modal'; closeModal(); } }, { once:true });
+  }
+
   function renderTabs(){
     const el = document.getElementById('whTabs');
     el.innerHTML = '';
@@ -1245,15 +1497,29 @@
     overviewTab.innerHTML = `<span class="wh-tab-name-text">📊 Overview</span>`;
     overviewTab.addEventListener('click', () => {
       showOverview = true;
+      showAgenda = false;
       render();
     });
     el.appendChild(overviewTab);
+
+    if(hasFirebaseSync && typeof APPOINTMENTS_PATH !== 'undefined' && APPOINTMENTS_PATH){
+      const pending = appointments.filter(a => !a.linked && a.status !== 'done').length;
+      const agendaTab = document.createElement('div');
+      agendaTab.className = 'wh-tab' + (showAgenda ? ' active' : '');
+      agendaTab.innerHTML = `<span class="wh-tab-name-text">📅 Agenda</span>` + (pending ? `<span class="wh-count">${pending} new</span>` : '');
+      agendaTab.addEventListener('click', () => {
+        showAgenda = true;
+        showOverview = false;
+        render();
+      });
+      el.appendChild(agendaTab);
+    }
 
     state.warehouses.forEach(w => {
       const spots = warehouseSpots(w);
       const occ = spots.filter(s => s.occupants && s.occupants.length > 0).length;
       const tab = document.createElement('div');
-      tab.className = 'wh-tab' + (!showOverview && w.id === state.activeWarehouseId ? ' active' : '');
+      tab.className = 'wh-tab' + (!showOverview && !showAgenda && w.id === state.activeWarehouseId ? ' active' : '');
       tab.innerHTML = `
         <span class="wh-tab-name-text">${escapeHtml(w.name)}</span>
         <span class="wh-count">${occ}/${spots.length}</span>
@@ -1263,6 +1529,7 @@
       tab.addEventListener('click', (e) => {
         if(e.target.closest('[data-del-wh]') || e.target.closest('[data-edit-wh]')) return;
         showOverview = false;
+        showAgenda = false;
         state.activeWarehouseId = w.id;
         render();
       });
@@ -1558,7 +1825,8 @@
     if(spot.occupants && spot.occupants.length > 0){
       const t = TYPES[spot.type] || { color:'#7A7A7A', label:'Unknown' };
       const longStay = spot.occupants.some(o => isLongStay(o.since));
-      el.className = 'spot' + (longStay ? ' long-stay' : '');
+      const anyAway = spot.occupants.some(o => o.away);
+      el.className = 'spot' + (longStay ? ' long-stay' : '') + (anyAway ? ' is-away' : '');
       el.style.background = hexAlpha(t.color, 0.16);
       el.style.borderColor = t.color;
       const multi = spot.occupants.length > 1;
@@ -1570,6 +1838,7 @@
       el.innerHTML = `
         <div class="spot-del" data-clear="${spot.id}" title="Clear bay">✕</div>
         ${longStay ? `<div class="long-stay-badge" title="Stored over a year">⏱</div>` : ''}
+        ${anyAway ? `<div class="away-badge" title="Currently away — temporarily picked up">OUT</div>` : ''}
         <div class="spot-id">${escapeHtml(tag)}</div>
         <div>
           <div class="spot-label">${escapeHtml(primary)}</div>
@@ -1819,8 +2088,8 @@
     const auto = autoTag(tagPrefix, spot.seq);
 
     let occDraft = (spot.occupants && spot.occupants.length)
-      ? spot.occupants.map(o => ({ name:o.name||'', reg:o.reg||'', since:o.since||'', notes:o.notes||'' }))
-      : [{ name:'', reg:'', since:'', notes:'' }];
+      ? spot.occupants.map(o => ({ name:o.name||'', reg:o.reg||'', since:o.since||'', notes:o.notes||'', away:!!o.away }))
+      : [{ name:'', reg:'', since:'', notes:'', away:false }];
 
     body.innerHTML = `
       <h3>${isEditing ? 'Edit bay' : 'Add / edit bay'}</h3>
@@ -1873,6 +2142,7 @@
             <button class="occ-remove" data-remove-occ="${idx}" title="Remove this vehicle">✕</button>
           </div>
           <input type="text" class="occ-notes" placeholder="Notes" value="${escapeAttr(o.notes)}" />
+          <label class="occ-away-toggle"><input type="checkbox" class="occ-away" ${o.away?'checked':''} /> Currently away (picked up temporarily, still reserved)</label>
         </div>
       `).join('');
       listEl.querySelectorAll('.occ-row').forEach(rowEl => {
@@ -1881,9 +2151,10 @@
         rowEl.querySelector('.occ-reg').addEventListener('input', (e) => { occDraft[idx].reg = e.target.value; });
         rowEl.querySelector('.occ-since').addEventListener('input', (e) => { occDraft[idx].since = e.target.value; });
         rowEl.querySelector('.occ-notes').addEventListener('input', (e) => { occDraft[idx].notes = e.target.value; });
+        rowEl.querySelector('.occ-away').addEventListener('change', (e) => { occDraft[idx].away = e.target.checked; });
         rowEl.querySelector('.occ-remove').addEventListener('click', () => {
           occDraft.splice(idx, 1);
-          if(occDraft.length === 0) occDraft.push({ name:'', reg:'', since:'', notes:'' });
+          if(occDraft.length === 0) occDraft.push({ name:'', reg:'', since:'', notes:'', away:false });
           renderOccList();
         });
       });
@@ -1891,7 +2162,7 @@
     renderOccList();
 
     document.getElementById('addOccBtn').addEventListener('click', () => {
-      occDraft.push({ name:'', reg:'', since:'', notes:'' });
+      occDraft.push({ name:'', reg:'', since:'', notes:'', away:false });
       renderOccList();
     });
 
@@ -1948,7 +2219,7 @@
         spot.type = selectedType;
         spot.length = length;
         spot.occupants = occDraft
-          .map(o => ({ name:o.name.trim(), reg:o.reg.trim(), since:o.since.trim(), notes:o.notes.trim() }))
+          .map(o => ({ name:o.name.trim(), reg:o.reg.trim(), since:o.since.trim(), notes:o.notes.trim(), away:!!o.away }))
           .filter(o => o.name || o.reg || o.notes);
       }
 
@@ -2387,6 +2658,30 @@
     sel.innerHTML = '<option value="all">All warehouses</option>' +
       state.warehouses.map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('');
     if([...sel.options].some(o => o.value === current)) sel.value = current;
+  }
+
+  // Independent of the main search bar's filters (warehouse/free-only) —
+  // used only by the "Link to bay" modal, always searching occupied bays.
+  function searchOccupiedBaysForLink(query){
+    const q = query.trim().toLowerCase();
+    if(!q) return [];
+    const results = [];
+    state.warehouses.forEach(w => {
+      const hasAisle = w.layout !== 'single';
+      const sides = hasAisle ? [['left','L'],['right','R']] : [['left','']];
+      sides.forEach(([key, tagPrefix]) => {
+        w[key].forEach(row => {
+          row.spots.forEach(spot => {
+            if(spot.removed || spot.isDoor) return;
+            (spot.occupants || []).forEach(o => {
+              const hay = [o.name || '', o.reg || '', o.notes || ''].join(' ').toLowerCase();
+              if(hay.includes(q)) results.push({ warehouse: w, spot, tagPrefix, occupant: o });
+            });
+          });
+        });
+      });
+    });
+    return results.slice(0, 20);
   }
 
   function searchAll(query){
