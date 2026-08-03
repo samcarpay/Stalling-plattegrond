@@ -1172,41 +1172,81 @@
     const body = document.getElementById('modalBody');
     body.className = 'modal';
 
+    function groupIntoRanges(sortedDates){
+      const ranges = [];
+      sortedDates.forEach(d => {
+        const last = ranges[ranges.length - 1];
+        if(last){
+          const nextExpected = new Date(last.end + 'T00:00:00');
+          nextExpected.setDate(nextExpected.getDate() + 1);
+          if(nextExpected.toISOString().slice(0,10) === d){
+            last.end = d;
+            last.dates.push(d);
+            return;
+          }
+        }
+        ranges.push({ start: d, end: d, dates: [d] });
+      });
+      return ranges;
+    }
+
     function renderList(){
       const dates = Object.keys(blockedDates).sort();
+      const ranges = groupIntoRanges(dates);
       body.innerHTML = `
         <h3>Blocked pickup dates</h3>
-        <div class="sub">Customers won't be able to select these dates on the booking form — handy for holidays or days you're closed.</div>
+        <div class="sub">Customers won't be able to select these dates on the booking form — handy for holidays or periods you're closed.</div>
         <div class="field">
-          <label>Block a new date</label>
-          <div style="display:flex;gap:8px;">
-            <input type="date" id="newBlockedDate" style="flex:1;" />
-            <button class="btn small" id="addBlockedDateBtn">Block</button>
+          <label>Block a period (use the same date twice for a single day)</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="date" id="blockFrom" style="flex:1;" />
+            <span style="font-size:12px;color:var(--ink-soft);">to</span>
+            <input type="date" id="blockTo" style="flex:1;" />
           </div>
+          <button class="btn small" id="addBlockedRangeBtn" style="margin-top:8px;width:100%;">Block period</button>
         </div>
         <div id="blockedList">
-          ${dates.length === 0
+          ${ranges.length === 0
             ? `<div class="print-empty">No dates currently blocked.</div>`
-            : dates.map(d => `
-                <div class="type-manage-row">
-                  <span style="flex:1;font-size:12.5px;color:var(--ink);">${escapeHtml(new Date(d + 'T00:00:00').toLocaleDateString())}</span>
-                  <button class="btn ghost small" data-unblock-date="${d}">Unblock</button>
-                </div>
-              `).join('')
+            : ranges.map((r, i) => {
+                const startLabel = new Date(r.start + 'T00:00:00').toLocaleDateString();
+                const label = r.start === r.end
+                  ? startLabel
+                  : `${startLabel} – ${new Date(r.end + 'T00:00:00').toLocaleDateString()} (${r.dates.length} days)`;
+                return `
+                  <div class="type-manage-row">
+                    <span style="flex:1;font-size:12.5px;color:var(--ink);">${escapeHtml(label)}</span>
+                    <button class="btn ghost small" data-unblock-range="${i}">Unblock</button>
+                  </div>
+                `;
+              }).join('')
           }
         </div>
         <div class="modal-actions"><button class="btn ghost" id="bdCloseBtn">Close</button></div>
       `;
 
-      document.getElementById('addBlockedDateBtn').addEventListener('click', () => {
-        const val = document.getElementById('newBlockedDate').value;
-        if(!val || !blockedDatesRef) return;
-        blockedDatesRef.child(val).set(true).then(renderList);
+      document.getElementById('addBlockedRangeBtn').addEventListener('click', () => {
+        const fromVal = document.getElementById('blockFrom').value;
+        const toVal = document.getElementById('blockTo').value;
+        if(!fromVal || !toVal || !blockedDatesRef) return;
+        let start = new Date(fromVal + 'T00:00:00');
+        let end = new Date(toVal + 'T00:00:00');
+        if(start > end){ const tmp = start; start = end; end = tmp; }
+        const updates = {};
+        const cursor = new Date(start);
+        while(cursor <= end){
+          updates[cursor.toISOString().slice(0,10)] = true;
+          cursor.setDate(cursor.getDate() + 1);
+        }
+        blockedDatesRef.update(updates).then(renderList);
       });
-      body.querySelectorAll('[data-unblock-date]').forEach(btn => {
+      body.querySelectorAll('[data-unblock-range]').forEach(btn => {
         btn.addEventListener('click', () => {
-          const d = btn.getAttribute('data-unblock-date');
-          if(blockedDatesRef) blockedDatesRef.child(d).remove().then(renderList);
+          const range = ranges[parseInt(btn.getAttribute('data-unblock-range'), 10)];
+          if(!blockedDatesRef) return;
+          const updates = {};
+          range.dates.forEach(d => { updates[d] = null; });
+          blockedDatesRef.update(updates).then(renderList);
         });
       });
       document.getElementById('bdCloseBtn').addEventListener('click', closeModal);
