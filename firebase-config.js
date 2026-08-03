@@ -122,3 +122,38 @@ const APP_PIN = "0808";
 // ─────────────────────────────────────────────────────────────────
 
 const APPOINTMENTS_PATH = "pickup-appointments";
+
+// ─────────────────────────────────────────────────────────────────
+// BLOCKED PICKUP DATES (optional, needs Agenda set up above)
+//
+// Lets you block specific dates (holidays, closures) so customers can't
+// pick them on the booking form, and manage the list from a new
+// "Blocked dates" button in this app's toolbar.
+//
+// Same public-read / staff-only-write split as appointments above —
+// the booking form needs to READ the list to check a date, but only
+// this signed-in app can ADD or REMOVE blocked dates.
+//
+// To turn it on:
+//   1. Realtime Database → Rules tab → add a third sibling entry:
+//
+//      {
+//        "rules": {
+//          "YOUR-PRIVATE-PATH-HERE": { ".read": true, ".write": true },
+//          "YOUR-APPOINTMENTS-PATH-HERE": { ".read": "auth != null", ".write": true },
+//          "YOUR-BLOCKED-DATES-PATH-HERE": { ".read": true, ".write": "auth != null" }
+//        }
+//      }
+//
+//      Note this one is the other way around from appointments: here
+//      anyone can READ (the booking form needs to check dates), but
+//      only this signed-in app can WRITE (so a stranger can't block
+//      your dates). Pick any plain name, e.g. "blocked-dates".
+//   2. Set BLOCKED_DATES_PATH below to that same name.
+//   3. Re-upload this file. A "Blocked dates" button appears in the
+//      toolbar once this is filled in.
+//
+// Leave blank to turn this feature off.
+// ─────────────────────────────────────────────────────────────────
+
+const BLOCKED_DATES_PATH = "blocked-dates";

@@ -689,6 +689,7 @@
       <div class="stats" id="stats"></div>
       <div style="display:flex;gap:6px;">
         <button class="btn ghost small" id="backupsBtn">Backups</button>
+        <button class="btn ghost small" id="blockedDatesBtn" style="display:none;">Blocked dates</button>
         <button class="btn ghost small" id="printBtn">Print</button>
         <button class="btn ghost small" id="manageTypesBtn">Manage types</button>
         <button class="btn ghost small" id="exportBtn">Export data</button>
@@ -874,12 +875,15 @@
       syncRef = firebase.database().ref(typeof SYNC_PATH !== 'undefined' ? SYNC_PATH : 'storage-sites-data');
       syncDataRef = syncRef.child('data');
 
-      // Anonymous sign-in — needed so the appointments rule can tell "this
-      // app" apart from "the public booking form" (which never signs in).
-      // Harmless if you haven't set up the Agenda feature at all.
-      if(typeof APPOINTMENTS_PATH !== 'undefined' && APPOINTMENTS_PATH && firebase.auth){
+      // Anonymous sign-in — needed so the appointments/blocked-dates rules
+      // can tell "this app" apart from "the public booking form" (which
+      // never signs in). Harmless if you haven't set up either feature.
+      const needsAuth = (typeof APPOINTMENTS_PATH !== 'undefined' && APPOINTMENTS_PATH)
+        || (typeof BLOCKED_DATES_PATH !== 'undefined' && BLOCKED_DATES_PATH);
+      if(needsAuth && firebase.auth){
         firebase.auth().signInAnonymously().then(() => {
           initAppointmentsSync();
+          initBlockedDatesSync();
         }).catch((err) => {
           console.error('Anonymous sign-in failed', err);
         });
@@ -944,6 +948,24 @@
       });
     }catch(e){
       console.error('Appointments sync failed to start', e);
+    }
+  }
+
+  // ---------- blocked pickup dates ----------
+  let blockedDates = {};       // { "YYYY-MM-DD": true, ... }
+  let blockedDatesRef = null;
+
+  function initBlockedDatesSync(){
+    if(!hasFirebaseSync || typeof BLOCKED_DATES_PATH === 'undefined' || !BLOCKED_DATES_PATH) return;
+    try{
+      blockedDatesRef = firebase.database().ref(BLOCKED_DATES_PATH);
+      blockedDatesRef.on('value', (snapshot) => {
+        blockedDates = snapshot.val() || {};
+      }, (error) => {
+        console.error('Blocked dates sync error', error);
+      });
+    }catch(e){
+      console.error('Blocked dates sync failed to start', e);
     }
   }
 
@@ -1142,6 +1164,57 @@
       const closeBtn = document.getElementById('bkCloseBtn');
       if(closeBtn) closeBtn.addEventListener('click', () => { body.className = 'modal'; closeModal(); });
     });
+  }
+
+  // ---------- modal: manage blocked pickup dates ----------
+  function openBlockedDatesModal(){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal';
+
+    function renderList(){
+      const dates = Object.keys(blockedDates).sort();
+      body.innerHTML = `
+        <h3>Blocked pickup dates</h3>
+        <div class="sub">Customers won't be able to select these dates on the booking form — handy for holidays or days you're closed.</div>
+        <div class="field">
+          <label>Block a new date</label>
+          <div style="display:flex;gap:8px;">
+            <input type="date" id="newBlockedDate" style="flex:1;" />
+            <button class="btn small" id="addBlockedDateBtn">Block</button>
+          </div>
+        </div>
+        <div id="blockedList">
+          ${dates.length === 0
+            ? `<div class="print-empty">No dates currently blocked.</div>`
+            : dates.map(d => `
+                <div class="type-manage-row">
+                  <span style="flex:1;font-size:12.5px;color:var(--ink);">${escapeHtml(new Date(d + 'T00:00:00').toLocaleDateString())}</span>
+                  <button class="btn ghost small" data-unblock-date="${d}">Unblock</button>
+                </div>
+              `).join('')
+          }
+        </div>
+        <div class="modal-actions"><button class="btn ghost" id="bdCloseBtn">Close</button></div>
+      `;
+
+      document.getElementById('addBlockedDateBtn').addEventListener('click', () => {
+        const val = document.getElementById('newBlockedDate').value;
+        if(!val || !blockedDatesRef) return;
+        blockedDatesRef.child(val).set(true).then(renderList);
+      });
+      body.querySelectorAll('[data-unblock-date]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const d = btn.getAttribute('data-unblock-date');
+          if(blockedDatesRef) blockedDatesRef.child(d).remove().then(renderList);
+        });
+      });
+      document.getElementById('bdCloseBtn').addEventListener('click', closeModal);
+    }
+
+    renderList();
+    overlay.classList.add('show');
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
   }
 
   function setStatus(t){
@@ -2019,6 +2092,11 @@
     el.addEventListener('pointerdown', (e) => {
       if(e.target.closest('.spot-del')) return;
       if(e.pointerType === 'mouse' && e.button !== 0) return;
+      // Belt-and-braces alongside the CSS: tell the browser up front not to
+      // start its own touch gesture (text selection, callout) for this
+      // touch at all, rather than relying only on user-select/touch-action.
+      // Touch only — desktop mouse users don't have this problem.
+      if(e.pointerType === 'touch') e.preventDefault();
       const startX = e.clientX, startY = e.clientY;
       const pointerId = e.pointerId;
       let cancelled = false;
@@ -2489,6 +2567,10 @@
 
   document.getElementById('manageTypesBtn').addEventListener('click', openManageTypesModal);
   document.getElementById('backupsBtn').addEventListener('click', openBackupsModal);
+  if(typeof BLOCKED_DATES_PATH !== 'undefined' && BLOCKED_DATES_PATH){
+    document.getElementById('blockedDatesBtn').style.display = '';
+    document.getElementById('blockedDatesBtn').addEventListener('click', openBlockedDatesModal);
+  }
 
   // ---------- global click handling ----------
   document.addEventListener('click', (e) => {
