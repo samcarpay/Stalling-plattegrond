@@ -567,6 +567,8 @@
     padding:7px;margin-bottom:7px;background:var(--paper);
   }
   .occ-row-top{display:flex;gap:5px;align-items:center;margin-bottom:5px;}
+  .occ-row-contact{display:flex;gap:5px;margin-bottom:5px;}
+  .occ-row-contact input{flex:1;}
   .occ-row input{
     min-width:0;padding:6px 7px;border:1px solid var(--line);border-radius:var(--radius);
     font-family:var(--font-body);font-size:12px;color:var(--ink);background:var(--card);outline:none;
@@ -842,6 +844,8 @@
           s.occupants.forEach(o => {
             if(typeof o.away !== 'boolean') o.away = false;
             if(typeof o.objectNummer !== 'string') o.objectNummer = '';
+            if(typeof o.email !== 'string') o.email = '';
+            if(typeof o.phone !== 'string') o.phone = '';
           });
         });
       });
@@ -2331,8 +2335,8 @@
     const auto = autoTag(tagPrefix, spot.seq);
 
     let occDraft = (spot.occupants && spot.occupants.length)
-      ? spot.occupants.map(o => ({ name:o.name||'', reg:o.reg||'', since:o.since||'', notes:o.notes||'', away:!!o.away, objectNummer:o.objectNummer||'' }))
-      : [{ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'' }];
+      ? spot.occupants.map(o => ({ name:o.name||'', reg:o.reg||'', since:o.since||'', notes:o.notes||'', away:!!o.away, objectNummer:o.objectNummer||'', email:o.email||'', phone:o.phone||'' }))
+      : [{ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'', email:'', phone:'' }];
 
     body.innerHTML = `
       <h3>${isEditing ? 'Plek bewerken' : 'Plek toevoegen / bewerken'}</h3>
@@ -2379,10 +2383,14 @@
       listEl.innerHTML = occDraft.map((o, idx) => `
         <div class="occ-row" data-occ-idx="${idx}">
           <div class="occ-row-top">
-            <input type="text" class="occ-name" placeholder="Naam eigenaar / klant" value="${escapeAttr(o.name)}" />
+            <input type="text" class="occ-name" placeholder="Naam eigenaar / klant" value="${escapeAttr(o.name)}" style="flex:2;" />
             <input type="text" class="occ-reg" placeholder="Kenteken" value="${escapeAttr(o.reg)}" />
             <input type="date" class="occ-since" value="${escapeAttr(o.since)}" title="Gestald sinds" />
             <button class="occ-remove" data-remove-occ="${idx}" title="Dit voertuig verwijderen">✕</button>
+          </div>
+          <div class="occ-row-contact">
+            <input type="tel" class="occ-phone" placeholder="Telefoonnummer" value="${escapeAttr(o.phone)}" />
+            <input type="email" class="occ-email" placeholder="E-mailadres" value="${escapeAttr(o.email)}" />
           </div>
           <input type="text" class="occ-objnum" placeholder="Object nummer (komt overeen met aanvragen)" value="${escapeAttr(o.objectNummer)}" style="margin-bottom:6px;" />
           <input type="text" class="occ-notes" placeholder="Notities" value="${escapeAttr(o.notes)}" />
@@ -2394,12 +2402,14 @@
         rowEl.querySelector('.occ-name').addEventListener('input', (e) => { occDraft[idx].name = e.target.value; });
         rowEl.querySelector('.occ-reg').addEventListener('input', (e) => { occDraft[idx].reg = e.target.value; });
         rowEl.querySelector('.occ-since').addEventListener('input', (e) => { occDraft[idx].since = e.target.value; });
+        rowEl.querySelector('.occ-phone').addEventListener('input', (e) => { occDraft[idx].phone = e.target.value; });
+        rowEl.querySelector('.occ-email').addEventListener('input', (e) => { occDraft[idx].email = e.target.value; });
         rowEl.querySelector('.occ-objnum').addEventListener('input', (e) => { occDraft[idx].objectNummer = e.target.value; });
         rowEl.querySelector('.occ-notes').addEventListener('input', (e) => { occDraft[idx].notes = e.target.value; });
         rowEl.querySelector('.occ-away').addEventListener('change', (e) => { occDraft[idx].away = e.target.checked; });
         rowEl.querySelector('.occ-remove').addEventListener('click', () => {
           occDraft.splice(idx, 1);
-          if(occDraft.length === 0) occDraft.push({ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'' });
+          if(occDraft.length === 0) occDraft.push({ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'', email:'', phone:'' });
           renderOccList();
         });
       });
@@ -2407,7 +2417,7 @@
     renderOccList();
 
     document.getElementById('addOccBtn').addEventListener('click', () => {
-      occDraft.push({ name:'', reg:'', since:'', notes:'', away:false });
+      occDraft.push({ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'', email:'', phone:'' });
       renderOccList();
     });
 
@@ -2464,8 +2474,8 @@
         spot.type = selectedType;
         spot.length = length;
         spot.occupants = occDraft
-          .map(o => ({ name:o.name.trim(), reg:o.reg.trim(), since:o.since.trim(), notes:o.notes.trim(), away:!!o.away, objectNummer:o.objectNummer.trim() }))
-          .filter(o => o.name || o.reg || o.notes || o.objectNummer);
+          .map(o => ({ name:o.name.trim(), reg:o.reg.trim(), since:o.since.trim(), notes:o.notes.trim(), away:!!o.away, objectNummer:o.objectNummer.trim(), email:o.email.trim(), phone:o.phone.trim() }))
+          .filter(o => o.name || o.reg || o.notes || o.objectNummer || o.email || o.phone);
       }
 
       closeModal(); render(); save();
@@ -2751,6 +2761,7 @@
         <div class="pbb-name">${escapeHtml(names)}</div>
         ${single && single.reg ? `<div class="pbb-reg">${escapeHtml(single.reg)}</div>` : ''}
         ${single && single.since ? `<div class="pbb-since">sinds ${escapeHtml(single.since)}</div>` : ''}
+        ${single && single.phone ? `<div class="pbb-since">${escapeHtml(single.phone)}</div>` : ''}
         ${single && single.notes ? `<div class="pbb-notes">${escapeHtml(single.notes)}</div>` : ''}
         ${multiNotes.length ? `<div class="pbb-notes">${escapeHtml(multiNotes.join(' · '))}</div>` : ''}
       </div>
@@ -2923,7 +2934,7 @@
           row.spots.forEach(spot => {
             if(spot.removed || spot.isDoor) return;
             (spot.occupants || []).forEach(o => {
-              const hay = [o.name || '', o.reg || '', o.notes || '', o.objectNummer || ''].join(' ').toLowerCase();
+              const hay = [o.name || '', o.reg || '', o.notes || '', o.objectNummer || '', o.email || '', o.phone || ''].join(' ').toLowerCase();
               if(hay.includes(q)) results.push({ warehouse: w, spot, tagPrefix, occupant: o });
             });
           });
@@ -2958,7 +2969,7 @@
             }
 
             (spot.occupants || []).forEach(o => {
-              const hay = [o.name || '', o.reg || '', o.notes || '', o.since || '', o.objectNummer || ''].join(' ').toLowerCase();
+              const hay = [o.name || '', o.reg || '', o.notes || '', o.since || '', o.objectNummer || '', o.email || '', o.phone || ''].join(' ').toLowerCase();
               if(q && hay.includes(q)) results.push({ warehouse: w, spot, sideName, rowIdx, sIdx, tagPrefix, occupant: o });
             });
             const bayHay = [spot.label || '', displayTag(spot, tagPrefix)].join(' ').toLowerCase();
