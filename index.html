@@ -837,7 +837,10 @@
             s.occupants = s.occupant ? [s.occupant] : [];
           }
           delete s.occupant;
-          s.occupants.forEach(o => { if(typeof o.away !== 'boolean') o.away = false; });
+          s.occupants.forEach(o => {
+            if(typeof o.away !== 'boolean') o.away = false;
+            if(typeof o.objectNummer !== 'string') o.objectNummer = '';
+          });
         });
       });
     });
@@ -1326,6 +1329,32 @@
     return null;
   }
 
+  // Looks for a bay whose object nummer exactly matches what the customer
+  // typed in the booking form — lets a request be linked in one click
+  // instead of a manual search, without ever linking silently on its own.
+  function findObjectNummerMatch(appt){
+    const q = (appt.vehicleDesc || '').trim().toLowerCase();
+    if(!q) return null;
+    for(const w of state.warehouses){
+      const hasAisle = w.layout !== 'single';
+      for(const side of ['left','right']){
+        for(const row of w[side]){
+          for(const spot of row.spots){
+            if(spot.removed || spot.isDoor) continue;
+            for(const o of (spot.occupants || [])){
+              if((o.objectNummer || '').trim().toLowerCase() === q){
+                return { warehouse: w, spot, side };
+              }
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  let showAgendaHistory = false; // UI-only, not persisted
+
   function renderAgendaPage(){
     const wrap = document.getElementById('plan');
     wrap.innerHTML = '';
@@ -1338,11 +1367,30 @@
     const container = document.createElement('div');
     container.className = 'overview';
 
+    const historyToggle = document.createElement('button');
+    historyToggle.className = 'btn ghost small';
+    historyToggle.style.marginBottom = '14px';
+    historyToggle.textContent = showAgendaHistory ? 'Hide history' : 'Show history (completed pickups)';
+    historyToggle.addEventListener('click', () => {
+      showAgendaHistory = !showAgendaHistory;
+      renderAgendaPage();
+    });
+    container.appendChild(historyToggle);
+
     const active = appointments.filter(a => a.status !== 'done');
-    if(active.length === 0){
-      container.innerHTML = `<div class="print-empty">No pickup appointments yet. They'll appear here as customers submit them through your website.</div>`;
+    if(active.length === 0 && !showAgendaHistory){
+      const empty = document.createElement('div');
+      empty.className = 'print-empty';
+      empty.textContent = 'No pickup appointments yet. They\'ll appear here as customers submit them through your website.';
+      container.appendChild(empty);
       wrap.appendChild(container);
       return;
+    }
+    if(active.length === 0){
+      const empty = document.createElement('div');
+      empty.className = 'print-empty';
+      empty.textContent = 'No active pickup appointments right now.';
+      container.appendChild(empty);
     }
 
     const weeks = {};
@@ -1366,6 +1414,7 @@
 
       wk.items.forEach(a => {
         const info = findLinkedInfo(a.linked);
+        const suggestion = !info ? findObjectNummerMatch(a) : null;
         const card = document.createElement('div');
         card.className = 'agenda-card';
         const away = info && info.spot.occupants && info.spot.occupants.some(o => o.away);
@@ -1382,7 +1431,9 @@
           <div class="agenda-link">
             ${info
               ? `Linked to <strong>${escapeHtml(info.warehouse.name)}</strong>, bay ${escapeHtml(displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R')))}${away ? ' — <span style="color:var(--ink);font-weight:700;">currently away</span>' : ''}`
-              : `<span style="color:var(--car);">Not linked to a bay yet</span>`
+              : suggestion
+                ? `<span style="color:var(--camper);">Suggested match:</span> <strong>${escapeHtml(suggestion.warehouse.name)}</strong>, bay ${escapeHtml(displayTag(suggestion.spot, suggestion.warehouse.layout==='single' ? '' : (suggestion.side==='left'?'L':'R')))} (object nummer matches)`
+                : `<span style="color:var(--car);">Not linked to a bay yet</span>`
             }
           </div>
         `;
@@ -1397,9 +1448,20 @@
           });
           actionsEl.appendChild(awayBtn);
         } else {
+          if(suggestion){
+            const confirmBtn = document.createElement('button');
+            confirmBtn.className = 'btn small';
+            confirmBtn.textContent = 'Confirm match';
+            confirmBtn.addEventListener('click', () => {
+              appointmentsRef.child(a.id).update({
+                linked: { warehouseId: suggestion.warehouse.id, spotId: suggestion.spot.id }
+              });
+            });
+            actionsEl.appendChild(confirmBtn);
+          }
           const linkBtn = document.createElement('button');
           linkBtn.className = 'btn ghost small';
-          linkBtn.textContent = 'Link to bay';
+          linkBtn.textContent = suggestion ? 'Search instead' : 'Link to bay';
           linkBtn.addEventListener('click', () => openLinkAppointmentModal(a.id));
           actionsEl.appendChild(linkBtn);
         }
@@ -1407,7 +1469,7 @@
         doneBtn.className = 'btn ghost small';
         doneBtn.textContent = 'Mark done';
         doneBtn.addEventListener('click', () => {
-          appointmentsRef.child(a.id).update({ status: 'done' });
+          appointmentsRef.child(a.id).update({ status: 'done', completedAt: Date.now() });
         });
         actionsEl.appendChild(doneBtn);
         const delBtn = document.createElement('button');
@@ -1425,6 +1487,68 @@
 
       container.appendChild(section);
     });
+
+    if(showAgendaHistory){
+      const done = appointments.filter(a => a.status === 'done')
+        .sort((a,b) => (b.completedAt || 0) - (a.completedAt || 0));
+
+      const histSection = document.createElement('div');
+      histSection.className = 'overview-section';
+      histSection.style.maxWidth = '640px';
+      histSection.innerHTML = `<h3 class="overview-h">History — completed pickups</h3>`;
+
+      if(done.length === 0){
+        const empty = document.createElement('div');
+        empty.className = 'print-empty';
+        empty.textContent = 'No completed pickups yet.';
+        histSection.appendChild(empty);
+      }
+
+      done.forEach(a => {
+        const info = findLinkedInfo(a.linked);
+        const card = document.createElement('div');
+        card.className = 'agenda-card';
+        card.style.opacity = '.75';
+        card.innerHTML = `
+          <div class="agenda-card-top">
+            <div>
+              <div class="agenda-date">${escapeHtml(a.date || '')}${a.completedAt ? ' · done ' + new Date(a.completedAt).toLocaleDateString() : ''}</div>
+              <div class="agenda-name">${escapeHtml(a.name || 'Unnamed')}</div>
+              <div class="agenda-sub">${escapeHtml(a.vehicleDesc || '')}${a.contact ? ' · ' + escapeHtml(a.contact) : ''}</div>
+            </div>
+            <div class="agenda-actions"></div>
+          </div>
+          <div class="agenda-link">
+            ${info
+              ? `Was linked to <strong>${escapeHtml(info.warehouse.name)}</strong>, bay ${escapeHtml(displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R')))}`
+              : `Was not linked to a bay`
+            }
+          </div>
+        `;
+        const actionsEl = card.querySelector('.agenda-actions');
+        const reopenBtn = document.createElement('button');
+        reopenBtn.className = 'btn ghost small';
+        reopenBtn.textContent = 'Reopen';
+        reopenBtn.title = 'Move back to active appointments';
+        reopenBtn.addEventListener('click', () => {
+          appointmentsRef.child(a.id).update({ status: 'requested', completedAt: null });
+        });
+        actionsEl.appendChild(reopenBtn);
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn ghost small';
+        delBtn.textContent = '✕';
+        delBtn.title = 'Delete permanently';
+        delBtn.addEventListener('click', () => {
+          confirmAction('Delete this history entry?', 'This permanently removes it — there is no further history after this.', () => {
+            appointmentsRef.child(a.id).remove();
+          });
+        });
+        actionsEl.appendChild(delBtn);
+        histSection.appendChild(card);
+      });
+
+      container.appendChild(histSection);
+    }
 
     wrap.appendChild(container);
   }
@@ -2088,8 +2212,8 @@
     const auto = autoTag(tagPrefix, spot.seq);
 
     let occDraft = (spot.occupants && spot.occupants.length)
-      ? spot.occupants.map(o => ({ name:o.name||'', reg:o.reg||'', since:o.since||'', notes:o.notes||'', away:!!o.away }))
-      : [{ name:'', reg:'', since:'', notes:'', away:false }];
+      ? spot.occupants.map(o => ({ name:o.name||'', reg:o.reg||'', since:o.since||'', notes:o.notes||'', away:!!o.away, objectNummer:o.objectNummer||'' }))
+      : [{ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'' }];
 
     body.innerHTML = `
       <h3>${isEditing ? 'Edit bay' : 'Add / edit bay'}</h3>
@@ -2141,6 +2265,7 @@
             <input type="date" class="occ-since" value="${escapeAttr(o.since)}" title="Stored since" />
             <button class="occ-remove" data-remove-occ="${idx}" title="Remove this vehicle">✕</button>
           </div>
+          <input type="text" class="occ-objnum" placeholder="Object nummer (matches booking requests)" value="${escapeAttr(o.objectNummer)}" style="margin-bottom:6px;" />
           <input type="text" class="occ-notes" placeholder="Notes" value="${escapeAttr(o.notes)}" />
           <label class="occ-away-toggle"><input type="checkbox" class="occ-away" ${o.away?'checked':''} /> Currently away (picked up temporarily, still reserved)</label>
         </div>
@@ -2150,11 +2275,12 @@
         rowEl.querySelector('.occ-name').addEventListener('input', (e) => { occDraft[idx].name = e.target.value; });
         rowEl.querySelector('.occ-reg').addEventListener('input', (e) => { occDraft[idx].reg = e.target.value; });
         rowEl.querySelector('.occ-since').addEventListener('input', (e) => { occDraft[idx].since = e.target.value; });
+        rowEl.querySelector('.occ-objnum').addEventListener('input', (e) => { occDraft[idx].objectNummer = e.target.value; });
         rowEl.querySelector('.occ-notes').addEventListener('input', (e) => { occDraft[idx].notes = e.target.value; });
         rowEl.querySelector('.occ-away').addEventListener('change', (e) => { occDraft[idx].away = e.target.checked; });
         rowEl.querySelector('.occ-remove').addEventListener('click', () => {
           occDraft.splice(idx, 1);
-          if(occDraft.length === 0) occDraft.push({ name:'', reg:'', since:'', notes:'', away:false });
+          if(occDraft.length === 0) occDraft.push({ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'' });
           renderOccList();
         });
       });
@@ -2219,8 +2345,8 @@
         spot.type = selectedType;
         spot.length = length;
         spot.occupants = occDraft
-          .map(o => ({ name:o.name.trim(), reg:o.reg.trim(), since:o.since.trim(), notes:o.notes.trim(), away:!!o.away }))
-          .filter(o => o.name || o.reg || o.notes);
+          .map(o => ({ name:o.name.trim(), reg:o.reg.trim(), since:o.since.trim(), notes:o.notes.trim(), away:!!o.away, objectNummer:o.objectNummer.trim() }))
+          .filter(o => o.name || o.reg || o.notes || o.objectNummer);
       }
 
       closeModal(); render(); save();
@@ -2674,7 +2800,7 @@
           row.spots.forEach(spot => {
             if(spot.removed || spot.isDoor) return;
             (spot.occupants || []).forEach(o => {
-              const hay = [o.name || '', o.reg || '', o.notes || ''].join(' ').toLowerCase();
+              const hay = [o.name || '', o.reg || '', o.notes || '', o.objectNummer || ''].join(' ').toLowerCase();
               if(hay.includes(q)) results.push({ warehouse: w, spot, tagPrefix, occupant: o });
             });
           });
@@ -2709,7 +2835,7 @@
             }
 
             (spot.occupants || []).forEach(o => {
-              const hay = [o.name || '', o.reg || '', o.notes || '', o.since || ''].join(' ').toLowerCase();
+              const hay = [o.name || '', o.reg || '', o.notes || '', o.since || '', o.objectNummer || ''].join(' ').toLowerCase();
               if(q && hay.includes(q)) results.push({ warehouse: w, spot, sideName, rowIdx, sIdx, tagPrefix, occupant: o });
             });
             const bayHay = [spot.label || '', displayTag(spot, tagPrefix)].join(' ').toLowerCase();
