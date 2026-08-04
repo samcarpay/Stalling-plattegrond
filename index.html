@@ -86,6 +86,14 @@
   }
   .pin-input:focus{border-color:var(--ink);}
   .pin-error{color:var(--car);font-size:12px;margin-top:10px;}
+  .login-field{text-align:left;margin-bottom:12px;}
+  .login-field label{display:block;font-size:11px;font-weight:600;color:var(--ink-soft);margin-bottom:4px;}
+  .login-field input{
+    width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--line);border-radius:var(--radius);
+    font-family:var(--font-body);font-size:14px;color:var(--ink);background:var(--paper);outline:none;
+  }
+  .login-field input:focus{border-color:var(--ink);}
+  .logout-line{cursor:default;}
 
   /* ---------- header ---------- */
   .titleblock{
@@ -681,6 +689,23 @@
   </div>
 </div>
 
+<div class="pin-gate" id="loginGate" style="display:none;">
+  <div class="pin-card">
+    <div class="pin-eyebrow">Opslagsites</div>
+    <h1>Inloggen</h1>
+    <div class="login-field">
+      <label for="loginEmailInput">E-mailadres</label>
+      <input type="email" id="loginEmailInput" autocomplete="username" />
+    </div>
+    <div class="login-field">
+      <label for="loginPasswordInput">Wachtwoord</label>
+      <input type="password" id="loginPasswordInput" autocomplete="current-password" />
+    </div>
+    <div class="pin-error" id="loginError" style="display:none;">Inloggen mislukt — controleer e-mail en wachtwoord.</div>
+    <button class="btn" id="loginSubmitBtn" style="width:100%;margin-top:12px;">Inloggen</button>
+  </div>
+</div>
+
 <div class="sheet" id="sheet">
   <div class="titleblock">
     <div class="titleblock-left">
@@ -721,6 +746,7 @@
 
   <div class="status-line" id="statusLine">laden…</div>
   <div class="status-line" id="lockLine" style="display:none;"><a href="#" id="lockLink" style="color:inherit;">🔒 Vergrendelen</a></div>
+  <div class="status-line logout-line" id="logoutLine" style="display:none;">Ingelogd als <span id="logoutEmailText"></span> · <a href="#" id="logoutLink" style="color:inherit;">Uitloggen</a></div>
 </div>
 
 <div class="overlay" id="overlay">
@@ -863,10 +889,17 @@
   // Not required — the app works fine without it, just without cross-device sync.
   const hasFirebaseSync = typeof FIREBASE_ENABLED !== 'undefined' && FIREBASE_ENABLED
     && typeof firebaseConfig !== 'undefined' && firebaseConfig.apiKey && firebaseConfig.databaseURL;
+  const useRealLogin = hasFirebaseSync && typeof USE_REAL_LOGIN !== 'undefined' && USE_REAL_LOGIN;
   let syncRef = null;      // base ref at SYNC_PATH — parent of both 'data' and 'backups'
   let syncDataRef = null;  // syncRef.child('data') — the live, currently-synced state
   let applyingRemote = false;   // guards against feedback loops while applying an incoming update
   let suppressNextEcho = false; // set right after our own write, so we don't re-render our own echo
+
+  function initFirebaseAppOnce(){
+    if(!firebase.apps || !firebase.apps.length){
+      firebase.initializeApp(firebaseConfig);
+    }
+  }
 
   function initFirebaseSync(){
     if(!hasFirebaseSync) return;
@@ -877,17 +910,24 @@
       }
     }, 7000);
     try{
-      firebase.initializeApp(firebaseConfig);
+      initFirebaseAppOnce();
       syncRef = firebase.database().ref(typeof SYNC_PATH !== 'undefined' ? SYNC_PATH : 'storage-sites-data');
       syncDataRef = syncRef.child('data');
 
-      // Anonymous sign-in — needed so the appointments/blocked-dates rules
-      // can tell "this app" apart from "the public booking form" (which
-      // never signs in). Harmless if you haven't set up either feature.
-      const needsAuth = (typeof APPOINTMENTS_PATH !== 'undefined' && APPOINTMENTS_PATH)
+      // With real login (useRealLogin), you're already authenticated by the
+      // time this runs — no separate anonymous sign-in needed, and calling
+      // signInAnonymously() here would actually replace your real session
+      // with an anonymous one, so it's skipped entirely in that mode.
+      const needsAuth = !useRealLogin && (
+        (typeof APPOINTMENTS_PATH !== 'undefined' && APPOINTMENTS_PATH)
         || (typeof BLOCKED_DATES_PATH !== 'undefined' && BLOCKED_DATES_PATH)
-        || (typeof NIEUWE_KLANTEN_ENABLED !== 'undefined' && NIEUWE_KLANTEN_ENABLED);
-      if(needsAuth && firebase.auth){
+        || (typeof NIEUWE_KLANTEN_ENABLED !== 'undefined' && NIEUWE_KLANTEN_ENABLED)
+      );
+      if(useRealLogin){
+        initAppointmentsSync();
+        initBlockedDatesSync();
+        initNieuweKlantenSync();
+      } else if(needsAuth && firebase.auth){
         firebase.auth().signInAnonymously().then(() => {
           initAppointmentsSync();
           initBlockedDatesSync();
@@ -3363,7 +3403,7 @@
 
   // ---------- pin gate ----------
   const PIN_UNLOCK_KEY = 'storage-sites-pin-unlocked';
-  const gateEnabled = typeof APP_PIN !== 'undefined' && APP_PIN;
+  const gateEnabled = !useRealLogin && typeof APP_PIN !== 'undefined' && APP_PIN;
 
   function showPinGate(){
     document.getElementById('sheet').style.display = 'none';
@@ -3390,7 +3430,57 @@
     input.addEventListener('keydown', (e) => { if(e.key === 'Enter') tryUnlock(); });
   }
 
-  if(gateEnabled){
+  // ---------- real login (email/password via Firebase Authentication) ----------
+  function showLoginGate(){
+    initFirebaseAppOnce();
+    let handledFirstState = false;
+
+    firebase.auth().onAuthStateChanged((user) => {
+      const gate = document.getElementById('loginGate');
+      if(user){
+        gate.style.display = 'none';
+        document.getElementById('sheet').style.display = '';
+        const logoutLine = document.getElementById('logoutLine');
+        logoutLine.style.display = 'block';
+        document.getElementById('logoutEmailText').textContent = user.email || '';
+        if(!handledFirstState){
+          handledFirstState = true;
+          load();
+        }
+      } else {
+        if(handledFirstState){
+          // was logged in, just signed out — cleanest way back to a fresh gate
+          location.reload();
+          return;
+        }
+        handledFirstState = true;
+        document.getElementById('sheet').style.display = 'none';
+        gate.style.display = 'flex';
+        document.getElementById('loginEmailInput').focus();
+      }
+    });
+
+    function tryLogin(){
+      const email = document.getElementById('loginEmailInput').value.trim();
+      const password = document.getElementById('loginPasswordInput').value;
+      const errorEl = document.getElementById('loginError');
+      errorEl.style.display = 'none';
+      firebase.auth().signInWithEmailAndPassword(email, password).catch((err) => {
+        console.error('Login failed', err);
+        errorEl.style.display = 'block';
+      });
+    }
+    document.getElementById('loginSubmitBtn').addEventListener('click', tryLogin);
+    document.getElementById('loginPasswordInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') tryLogin(); });
+    document.getElementById('logoutLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      firebase.auth().signOut();
+    });
+  }
+
+  if(useRealLogin){
+    showLoginGate();
+  } else if(gateEnabled){
     const lockLine = document.getElementById('lockLine');
     lockLine.style.display = 'block';
     document.getElementById('lockLink').addEventListener('click', (e) => {

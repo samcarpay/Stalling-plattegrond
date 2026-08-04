@@ -39,22 +39,22 @@
 //      sync automatically whenever you're online.
 // ─────────────────────────────────────────────────────────────────
 
-const FIREBASE_ENABLED = true;
+const FIREBASE_ENABLED = false;
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAM7A6huZzCnTiGgXymOpS-3uzelzn0gjI",
-  databaseURL: "https://stalling-plattegrond-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "stalling-plattegrond",
+  apiKey: "",
+  databaseURL: "",
+  projectId: "",
   // The 4 fields below are only needed if you turn on NIEUWE_KLANTEN_ENABLED
   // further down this file — everything else in this app ignores them, so
   // it's fine to leave them blank otherwise.
-  authDomain: "stalling-plattegrond.firebaseapp.com",
-  storageBucket: "stalling-plattegrond.firebasestorage.app",
-  messagingSenderId: "164944812598",
-  appId: "1:164944812598:web:163b7567328b5627055697",
+  authDomain: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: "",
 };
 
-const SYNC_PATH = "Plattegrond-111ws-qbh3Tm791";
+const SYNC_PATH = "YOUR-PRIVATE-PATH-HERE";
 
 // ─────────────────────────────────────────────────────────────────
 // PIN GATE (optional)
@@ -74,7 +74,48 @@ const SYNC_PATH = "Plattegrond-111ws-qbh3Tm791";
 // entirely — the app then behaves exactly as before.
 // ─────────────────────────────────────────────────────────────────
 
-const APP_PIN = "0808";
+const APP_PIN = "";
+
+// ─────────────────────────────────────────────────────────────────
+// REAL LOGIN (optional — a stronger alternative to the PIN above)
+//
+// Unlike the PIN, this is actual security: a real Firebase account
+// (email + password) is required, and — critically — your database
+// itself is locked down to only allow logged-in requests, not just
+// the app's screen. If you turn this on, the PIN above is ignored.
+//
+// You already have everything needed for this if you've set up the
+// contract system (admin.html) — same Firebase project, same
+// Authentication service, same account you log into admin.html with
+// can be reused here too.
+//
+// To turn it on:
+//   1. Confirm Email/Password sign-in is enabled: Firebase console →
+//      Authentication → Sign-in method → Email/Password. (Already
+//      done if you've set up admin.html.)
+//   2. Confirm you have at least one user: Authentication → Users.
+//      (Your own admin.html login works fine here too.)
+//   3. THE IMPORTANT STEP — tighten your Realtime Database rules so
+//      the data itself actually requires login, not just the app's
+//      screen. Go to Realtime Database → Rules, and change your
+//      main private-path entry from this:
+//
+//        "YOUR-PRIVATE-PATH-HERE": { ".read": true, ".write": true }
+//
+//      to this:
+//
+//        "YOUR-PRIVATE-PATH-HERE": { ".read": "auth != null", ".write": "auth != null" }
+//
+//      Leave any other entries (appointments, blocked-dates) exactly
+//      as they were — only change this one line. Click Publish.
+//   4. Set USE_REAL_LOGIN below to true.
+//   5. Re-upload this file. Reload the app — you'll see a proper
+//      email/password screen instead of the PIN.
+//
+// Leave as false to keep using the PIN (or no gate at all).
+// ─────────────────────────────────────────────────────────────────
+
+const USE_REAL_LOGIN = false;
 
 // ─────────────────────────────────────────────────────────────────
 // AGENDA / PICKUP APPOINTMENTS (optional)
@@ -128,7 +169,7 @@ const APP_PIN = "0808";
 // Leave this blank to turn the whole feature off — nothing else changes.
 // ─────────────────────────────────────────────────────────────────
 
-const APPOINTMENTS_PATH = "pickup-appointments";
+const APPOINTMENTS_PATH = "";
 
 // ─────────────────────────────────────────────────────────────────
 // BLOCKED PICKUP DATES (optional, needs Agenda set up above)
@@ -163,7 +204,7 @@ const APPOINTMENTS_PATH = "pickup-appointments";
 // Leave blank to turn this feature off.
 // ─────────────────────────────────────────────────────────────────
 
-const BLOCKED_DATES_PATH = "blocked-dates";
+const BLOCKED_DATES_PATH = "";
 
 // ─────────────────────────────────────────────────────────────────
 // NIEUWE KLANTEN / NEW CUSTOMERS FROM THE CONTRACT SYSTEM (optional)
@@ -204,4 +245,4 @@ const BLOCKED_DATES_PATH = "blocked-dates";
 // Leave as false to turn this feature off entirely.
 // ─────────────────────────────────────────────────────────────────
 
-const NIEUWE_KLANTEN_ENABLED = true;
+const NIEUWE_KLANTEN_ENABLED = false;
