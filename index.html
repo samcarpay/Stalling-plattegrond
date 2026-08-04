@@ -2509,6 +2509,12 @@
   function startDrag(sourceEl, spotId, pointerId, startX, startY){
     try{ sourceEl.setPointerCapture(pointerId); }catch(e){}
     sourceEl.classList.add('dragging');
+    // Fully take over touch handling for the duration of the drag — the
+    // CSS touch-action:pan-x is only meant for quick swipes before a drag
+    // has started; once we're actually dragging, no default gesture
+    // (panning in any direction) should be allowed to compete with it.
+    const prevTouchAction = sourceEl.style.touchAction;
+    sourceEl.style.touchAction = 'none';
 
     const rect = sourceEl.getBoundingClientRect();
     const ghost = sourceEl.cloneNode(true);
@@ -2539,16 +2545,21 @@
       }
     }
 
-    function onUp(e){
+    function cleanup(){
       sourceEl.removeEventListener('pointermove', onMove);
       sourceEl.removeEventListener('pointerup', onUp);
       sourceEl.removeEventListener('pointercancel', onCancel);
       sourceEl.classList.remove('dragging');
+      sourceEl.style.touchAction = prevTouchAction;
       if(currentTarget) currentTarget.classList.remove('drop-target');
       ghost.remove();
+    }
 
-      if(currentTarget){
-        const targetId = currentTarget.getAttribute('data-spot-id');
+    function onUp(e){
+      const target = currentTarget;
+      cleanup();
+      if(target){
+        const targetId = target.getAttribute('data-spot-id');
         swapSpotContents(spotId, targetId);
         dragJustHappened = true;
         setTimeout(() => { dragJustHappened = false; }, 300);
@@ -2557,17 +2568,12 @@
     }
 
     function onCancel(){
-      sourceEl.removeEventListener('pointermove', onMove);
-      sourceEl.removeEventListener('pointerup', onUp);
-      sourceEl.removeEventListener('pointercancel', onCancel);
-      sourceEl.classList.remove('dragging');
-      if(currentTarget) currentTarget.classList.remove('drop-target');
-      ghost.remove();
+      cleanup();
     }
 
-    sourceEl.addEventListener('pointermove', onMove);
-    sourceEl.addEventListener('pointerup', onUp);
-    sourceEl.addEventListener('pointercancel', onCancel);
+    sourceEl.addEventListener('pointermove', onMove, { passive: false });
+    sourceEl.addEventListener('pointerup', onUp, { passive: false });
+    sourceEl.addEventListener('pointercancel', onCancel, { passive: false });
   }
 
   function renderAddSpotControl(row){
