@@ -45,6 +45,13 @@ const firebaseConfig = {
   apiKey: "AIzaSyAM7A6huZzCnTiGgXymOpS-3uzelzn0gjI",
   databaseURL: "https://stalling-plattegrond-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "stalling-plattegrond",
+  // The 4 fields below are only needed if you turn on NIEUWE_KLANTEN_ENABLED
+  // further down this file — everything else in this app ignores them, so
+  // it's fine to leave them blank otherwise.
+  authDomain: "stalling-plattegrond.firebaseapp.com",
+  storageBucket: "stalling-plattegrond.firebasestorage.app",
+  messagingSenderId: "164944812598",
+  appId: "1:164944812598:web:163b7567328b5627055697",
 };
 
 const SYNC_PATH = "Plattegrond-111ws-qbh3Tm791";
@@ -157,3 +164,44 @@ const APPOINTMENTS_PATH = "pickup-appointments";
 // ─────────────────────────────────────────────────────────────────
 
 const BLOCKED_DATES_PATH = "blocked-dates";
+
+// ─────────────────────────────────────────────────────────────────
+// NIEUWE KLANTEN / NEW CUSTOMERS FROM THE CONTRACT SYSTEM (optional)
+//
+// If you've set up the separate stallingscontract system (klant.html /
+// admin.html / onderteken.html), this lets Storage Sites read signed
+// contracts from it and show them in a new "🧾 Nieuwe klanten" tab —
+// with a button to place each one straight into a real bay, pre-filled
+// with their name, kenteken, email, phone and object nummer, so you
+// don't have to retype anything you already collected.
+//
+// SECURITY NOTE — please read this honestly before turning it on:
+// This app already signs itself in anonymously to support the Agenda
+// feature above. Your contract system's Firestore rules currently
+// treat "signed in" as one single permission level — they don't
+// distinguish "the real admin.html login" from "this app's quiet
+// anonymous session." That means turning this on gives Storage Sites
+// the same read/write reach into your contract data that admin.html
+// has, not just read-only access to signed contracts. Given Storage
+// Sites is already PIN-protected and not public-facing, this is a
+// reasonable tradeoff for a small operation — but it's a real one,
+// not a hidden one.
+//
+// To turn it on:
+//   1. Make sure you've already completed the sync setup at the very
+//      top of this file (FIREBASE_ENABLED, firebaseConfig, SYNC_PATH).
+//   2. This feature specifically also needs the 4 extra fields in
+//      firebaseConfig above (authDomain, storageBucket,
+//      messagingSenderId, appId) filled in — the rest of this app
+//      doesn't need them, but the contract system's Firestore
+//      database does. You already have all 6 values from setting up
+//      the contract system's own firebase-config.js — copy the same
+//      6 values across into firebaseConfig above.
+//   3. Set NIEUWE_KLANTEN_ENABLED below to true.
+//   4. Re-upload this file. A "🧾 Nieuwe klanten" tab appears once
+//      there's at least one signed contract waiting to be placed.
+//
+// Leave as false to turn this feature off entirely.
+// ─────────────────────────────────────────────────────────────────
+
+const NIEUWE_KLANTEN_ENABLED = true;

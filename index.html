@@ -735,6 +735,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
 
 <script>
@@ -884,11 +885,13 @@
       // can tell "this app" apart from "the public booking form" (which
       // never signs in). Harmless if you haven't set up either feature.
       const needsAuth = (typeof APPOINTMENTS_PATH !== 'undefined' && APPOINTMENTS_PATH)
-        || (typeof BLOCKED_DATES_PATH !== 'undefined' && BLOCKED_DATES_PATH);
+        || (typeof BLOCKED_DATES_PATH !== 'undefined' && BLOCKED_DATES_PATH)
+        || (typeof NIEUWE_KLANTEN_ENABLED !== 'undefined' && NIEUWE_KLANTEN_ENABLED);
       if(needsAuth && firebase.auth){
         firebase.auth().signInAnonymously().then(() => {
           initAppointmentsSync();
           initBlockedDatesSync();
+          initNieuweKlantenSync();
         }).catch((err) => {
           console.error('Anonymous sign-in failed', err);
         });
@@ -971,6 +974,30 @@
       });
     }catch(e){
       console.error('Blocked dates sync failed to start', e);
+    }
+  }
+
+  // ---------- nieuwe klanten (signed contracts from the separate contract system) ----------
+  let nieuweKlanten = [];      // signed ('voltooid') contracts not yet placed into a bay
+  let contractDb = null;
+  let showNieuweKlanten = false; // UI-only, not persisted
+
+  function initNieuweKlantenSync(){
+    if(!hasFirebaseSync || typeof NIEUWE_KLANTEN_ENABLED === 'undefined' || !NIEUWE_KLANTEN_ENABLED || !firebase.firestore) return;
+    try{
+      contractDb = firebase.firestore();
+      contractDb.collection('aanvragen').where('status', '==', 'voltooid')
+        .onSnapshot((snap) => {
+          nieuweKlanten = snap.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(d => !d.geplaatstInStorageSites);
+          renderTabs();
+          if(showNieuweKlanten) renderNieuweKlantenPage();
+        }, (error) => {
+          console.error('Nieuwe klanten sync error', error);
+        });
+    }catch(e){
+      console.error('Nieuwe klanten sync failed to start', e);
     }
   }
 
@@ -1301,6 +1328,12 @@
       document.getElementById('legend').innerHTML = '';
       document.getElementById('whPurpose').innerHTML = '';
       renderAgendaPage();
+    } else if(showNieuweKlanten){
+      document.getElementById('stats').innerHTML = '';
+      document.getElementById('globalStatLine').innerHTML = '';
+      document.getElementById('legend').innerHTML = '';
+      document.getElementById('whPurpose').innerHTML = '';
+      renderNieuweKlantenPage();
     } else if(showOverview){
       renderOverviewStats();
       document.getElementById('legend').innerHTML = '';
@@ -1671,6 +1704,179 @@
     wrap.appendChild(container);
   }
 
+  // ---------- nieuwe klanten page ----------
+  function renderNieuweKlantenPage(){
+    const wrap = document.getElementById('plan');
+    wrap.innerHTML = '';
+
+    const container = document.createElement('div');
+    container.className = 'overview';
+
+    if(!contractDb){
+      container.innerHTML = `<div class="print-empty">Verbinden…</div>`;
+      wrap.appendChild(container);
+      return;
+    }
+
+    if(nieuweKlanten.length === 0){
+      container.innerHTML = `<div class="print-empty">Geen nieuwe klanten om te plaatsen. Getekende contracten verschijnen hier automatisch zodra ze klaar zijn om in een loods geplaatst te worden.</div>`;
+      wrap.appendChild(container);
+      return;
+    }
+
+    const section = document.createElement('div');
+    section.className = 'overview-section';
+    section.style.maxWidth = '640px';
+    section.innerHTML = `<h3 class="overview-h">Ondertekende contracten, nog niet geplaatst</h3>`;
+
+    nieuweKlanten.forEach(d => {
+      const card = document.createElement('div');
+      card.className = 'agenda-card';
+      card.innerHTML = `
+        <div class="agenda-card-top">
+          <div>
+            <div class="agenda-date">Object ${escapeHtml(d.objectnummer || '—')} · sinds ${escapeHtml(d.startdatum || '—')}</div>
+            <div class="agenda-name">${escapeHtml(d.voornaam || '')} ${escapeHtml(d.achternaam || '')}</div>
+            <div class="agenda-sub">${escapeHtml(d.categorie || '')} — ${escapeHtml(d.merk || '')} ${escapeHtml(d.type || '')}${d.lengte ? ` (${d.lengte}m × ${d.breedte}m)` : ''}</div>
+            <div class="agenda-sub">${escapeHtml(d.email || '')}${d.telefoon ? ' · ' + escapeHtml(d.telefoon) : ''}${d.kenteken ? ' · ' + escapeHtml(d.kenteken) : ''}</div>
+          </div>
+          <div class="agenda-actions"></div>
+        </div>
+      `;
+      const actionsEl = card.querySelector('.agenda-actions');
+      const placeBtn = document.createElement('button');
+      placeBtn.className = 'btn small';
+      placeBtn.textContent = 'Plaats in loods';
+      placeBtn.addEventListener('click', () => openPlaceCustomerSearchModal(d));
+      actionsEl.appendChild(placeBtn);
+      section.appendChild(card);
+    });
+
+    container.appendChild(section);
+    wrap.appendChild(container);
+  }
+
+  // Finds empty (unoccupied, non-door, non-removed) bays across every
+  // warehouse — used when placing a new customer into a real bay.
+  function searchEmptyBaysForPlacement(query){
+    const q = query.trim().toLowerCase();
+    const results = [];
+    state.warehouses.forEach(w => {
+      const hasAisle = w.layout !== 'single';
+      const sides = hasAisle ? [['left','L'],['right','R']] : [['left','']];
+      sides.forEach(([key, tagPrefix]) => {
+        w[key].forEach(row => {
+          row.spots.forEach(spot => {
+            if(spot.removed || spot.isDoor) return;
+            if(spot.occupants && spot.occupants.length > 0) return;
+            const tag = displayTag(spot, tagPrefix);
+            const hay = [spot.label || '', tag, w.name].join(' ').toLowerCase();
+            if(!q || hay.includes(q)){
+              results.push({ warehouse: w, spot, tagPrefix, tag });
+            }
+          });
+        });
+      });
+    });
+    return results.slice(0, 30);
+  }
+
+  function guessTypeKeyFor(categorie){
+    const c = (categorie || '').trim().toLowerCase();
+    const keys = Object.keys(TYPES);
+    const byLabel = keys.find(k => TYPES[k].label.toLowerCase() === c);
+    if(byLabel) return byLabel;
+    // loose fallback matches for common Dutch category names
+    if(c.includes('camper')) return keys.find(k => k.toLowerCase().includes('camper')) || keys[0];
+    if(c.includes('caravan')) return keys.find(k => k.toLowerCase().includes('caravan')) || keys[0];
+    if(c.includes('auto')) return keys.find(k => k.toLowerCase().includes('car')) || keys[0];
+    if(c.includes('aanhanger') || c.includes('trailer')) return keys.find(k => k.toLowerCase().includes('trailer')) || keys[0];
+    return keys[0];
+  }
+
+  function openPlaceCustomerSearchModal(d){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal wide';
+    body.innerHTML = `
+      <h3>Plaats ${escapeHtml(d.voornaam || '')} ${escapeHtml(d.achternaam || '')}</h3>
+      <div class="sub">Zoek een lege plek om deze klant in te plaatsen.</div>
+      <div class="field">
+        <label>Zoek lege plekken (pleknaam, loods)</label>
+        <input type="text" id="placeSearchInput" placeholder="Begin met typen…" />
+      </div>
+      <div id="placeResults" style="max-height:320px;overflow-y:auto;"></div>
+      <div class="modal-actions"><button class="btn ghost" id="placeCancelBtn">Annuleren</button></div>
+    `;
+    overlay.classList.add('show');
+    const input = document.getElementById('placeSearchInput');
+    input.focus();
+
+    function runSearch(){
+      const results = searchEmptyBaysForPlacement(input.value);
+      const resEl = document.getElementById('placeResults');
+      if(results.length === 0){
+        resEl.innerHTML = `<div class="search-empty">Geen lege plekken gevonden.</div>`;
+        return;
+      }
+      resEl.innerHTML = results.map((r, i) => `
+        <div class="search-result" data-place-result="${i}">
+          <div class="search-result-main">
+            <div class="search-result-name">Plek ${escapeHtml(r.tag)}</div>
+            <div class="search-result-meta">${escapeHtml(r.warehouse.name)}</div>
+          </div>
+        </div>
+      `).join('');
+      resEl.querySelectorAll('[data-place-result]').forEach(node => {
+        node.addEventListener('click', () => {
+          const r = results[parseInt(node.getAttribute('data-place-result'), 10)];
+          body.className = 'modal';
+          closeModal();
+          openPlacementBayModal(d, r);
+        });
+      });
+    }
+    input.addEventListener('input', runSearch);
+    runSearch();
+
+    document.getElementById('placeCancelBtn').addEventListener('click', () => { body.className = 'modal'; closeModal(); });
+    overlay.addEventListener('click', (e) => { if(e.target === overlay){ body.className = 'modal'; closeModal(); } }, { once:true });
+  }
+
+  // Opens the normal bay-edit modal, but pre-filled with this signed
+  // customer's details, and marks the contract as placed once saved.
+  function openPlacementBayModal(aanvraag, result){
+    // switch to the right warehouse first, so the bay actually renders correctly afterward
+    state.activeWarehouseId = result.warehouse.id;
+    showNieuweKlanten = false;
+    render();
+
+    const spot = result.spot;
+    const t = guessTypeKeyFor(aanvraag.categorie);
+    if(TYPES[t]) spot.type = t;
+
+    const notesParts = [];
+    if(aanvraag.categorie) notesParts.push(aanvraag.categorie);
+    if(aanvraag.merk || aanvraag.type) notesParts.push(`${aanvraag.merk || ''} ${aanvraag.type || ''}`.trim());
+    if(aanvraag.lengte && aanvraag.breedte) notesParts.push(`${aanvraag.lengte}m × ${aanvraag.breedte}m`);
+    if(aanvraag.adres) notesParts.push(`${aanvraag.adres}, ${aanvraag.postcode || ''} ${aanvraag.woonplaats || ''}`.trim());
+
+    pendingPlacementAanvraagId = aanvraag.id;
+    openSpotModal(null, spot, null, null, null, result.tagPrefix, {
+      name: `${aanvraag.voornaam || ''} ${aanvraag.achternaam || ''}`.trim(),
+      reg: aanvraag.kenteken || '',
+      email: aanvraag.email || '',
+      phone: aanvraag.telefoon || '',
+      objectNummer: aanvraag.objectnummer || '',
+      since: aanvraag.startdatumIso || '',
+      notes: notesParts.join(' · '),
+    });
+  }
+
+  // Set right before opening the bay modal for a placement, read (and
+  // cleared) inside openSpotModal's save handler.
+  let pendingPlacementAanvraagId = null;
+
   function openLinkAppointmentModal(appointmentId){
     const appt = appointments.find(a => a.id === appointmentId);
     if(!appt) return;
@@ -1742,9 +1948,23 @@
       agendaTab.addEventListener('click', () => {
         showAgenda = true;
         showOverview = false;
+        showNieuweKlanten = false;
         render();
       });
       el.appendChild(agendaTab);
+    }
+
+    if(hasFirebaseSync && typeof NIEUWE_KLANTEN_ENABLED !== 'undefined' && NIEUWE_KLANTEN_ENABLED){
+      const nkTab = document.createElement('div');
+      nkTab.className = 'wh-tab' + (showNieuweKlanten ? ' active' : '');
+      nkTab.innerHTML = `<span class="wh-tab-name-text">🧾 Nieuwe klanten</span>` + (nieuweKlanten.length ? `<span class="wh-count">${nieuweKlanten.length}</span>` : '');
+      nkTab.addEventListener('click', () => {
+        showNieuweKlanten = true;
+        showOverview = false;
+        showAgenda = false;
+        render();
+      });
+      el.appendChild(nkTab);
     }
 
     const overviewTab = document.createElement('div');
@@ -1753,6 +1973,7 @@
     overviewTab.addEventListener('click', () => {
       showOverview = true;
       showAgenda = false;
+      showNieuweKlanten = false;
       render();
     });
     el.appendChild(overviewTab);
@@ -1761,7 +1982,7 @@
       const spots = warehouseSpots(w);
       const occ = spots.filter(s => s.occupants && s.occupants.length > 0).length;
       const tab = document.createElement('div');
-      tab.className = 'wh-tab' + (!showOverview && !showAgenda && w.id === state.activeWarehouseId ? ' active' : '');
+      tab.className = 'wh-tab' + (!showOverview && !showAgenda && !showNieuweKlanten && w.id === state.activeWarehouseId ? ' active' : '');
       tab.innerHTML = `
         <span class="wh-tab-name-text">${escapeHtml(w.name)}</span>
         <span class="wh-count">${occ}/${spots.length}</span>
@@ -1772,6 +1993,7 @@
         if(e.target.closest('[data-del-wh]') || e.target.closest('[data-edit-wh]')) return;
         showOverview = false;
         showAgenda = false;
+        showNieuweKlanten = false;
         state.activeWarehouseId = w.id;
         render();
       });
@@ -2325,7 +2547,7 @@
   }
 
   // ---------- modal: assign / edit occupants, or mark as a door ----------
-  function openSpotModal(row, spot, sideName, rowIdx, sIdx, tagPrefix){
+  function openSpotModal(row, spot, sideName, rowIdx, sIdx, tagPrefix, prefillOccupant){
     const overlay = document.getElementById('overlay');
     const body = document.getElementById('modalBody');
     body.className = 'modal';
@@ -2336,7 +2558,7 @@
 
     let occDraft = (spot.occupants && spot.occupants.length)
       ? spot.occupants.map(o => ({ name:o.name||'', reg:o.reg||'', since:o.since||'', notes:o.notes||'', away:!!o.away, objectNummer:o.objectNummer||'', email:o.email||'', phone:o.phone||'' }))
-      : [{ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'', email:'', phone:'' }];
+      : [{ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'', email:'', phone:'', ...(prefillOccupant || {}) }];
 
     body.innerHTML = `
       <h3>${isEditing ? 'Plek bewerken' : 'Plek toevoegen / bewerken'}</h3>
@@ -2478,12 +2700,19 @@
           .filter(o => o.name || o.reg || o.notes || o.objectNummer || o.email || o.phone);
       }
 
+      const placedId = pendingPlacementAanvraagId;
       closeModal(); render(); save();
+
+      if(placedId && contractDb){
+        contractDb.collection('aanvragen').doc(placedId).update({ geplaatstInStorageSites: true })
+          .catch((err) => console.error('Kon aanvraag niet als geplaatst markeren', err));
+      }
     });
   }
 
   function closeModal(){
     document.getElementById('overlay').classList.remove('show');
+    pendingPlacementAanvraagId = null;
   }
 
   // ---------- reusable confirm dialog for destructive actions ----------
