@@ -246,3 +246,39 @@ const BLOCKED_DATES_PATH = "blocked-dates";
 // ─────────────────────────────────────────────────────────────────
 
 const NIEUWE_KLANTEN_ENABLED = true;
+
+// ─────────────────────────────────────────────────────────────────
+// OFF-FIREBASE EMAIL BACKUP (optional)
+//
+// Everything in this app currently lives in one Firebase project.
+// The Backups feature already protects you against mistakes (bad
+// imports, accidental deletions) — but it doesn't protect you against
+// losing access to Firebase itself. This adds a "Back-up nu e-mailen"
+// button to the Backups screen that sends your current data as a
+// .json file attached to an email, landing somewhere completely
+// outside Firebase (your own inbox).
+//
+// This is a MANUAL button, not an automatic schedule — building true
+// automatic scheduled backups needs a server-side component this
+// static site doesn't have. Clicking it monthly (or whenever you
+// think of it) is enough to matter.
+//
+// Reuses the same EmailJS account as your booking widget and contract
+// system — same Public Key and Service ID, just one new template.
+//
+// To turn it on:
+//   1. In your EmailJS account (emailjs.com), create ONE new template
+//      with variables {{to_email}}, {{filename}}, {{date}} in the body,
+//      and an attachment linked to {{backup_base64}} / {{backup_filename}}
+//      (via the "Attachment" field in the template editor — same way
+//      the contract PDF email attachment was set up).
+//   2. Fill in the 4 values below.
+//   3. Re-upload this file. A button appears in the Backups modal.
+//
+// Leave EMAILJS_TEMPLATE_ID_BACKUP blank to leave this feature off.
+// ─────────────────────────────────────────────────────────────────
+
+const BACKUP_EMAIL_PUBLIC_KEY = "";      // same as your booking widget's EMAILJS_PUBLIC_KEY
+const BACKUP_EMAIL_SERVICE_ID = "";      // same as your booking widget's EMAILJS_SERVICE_ID
+const EMAILJS_TEMPLATE_ID_BACKUP = "";   // new template, see instructions above
+const BACKUP_EMAIL_TO = "";              // the email address that should receive backups

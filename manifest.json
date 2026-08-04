@@ -1,7 +1,7 @@
 {
-  "name": "Storage Sites — Yard Plan",
-  "short_name": "Storage Sites",
-  "description": "Site plan and bay tracker for vehicle storage warehouses",
+  "name": "Zwartendijk Stalling — Plattegrond",
+  "short_name": "Zwartendijk",
+  "description": "Plattegrond en plekbeheer voor Zwartendijk Stalling",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
