@@ -2513,6 +2513,9 @@
     // CSS touch-action:pan-x is only meant for quick swipes before a drag
     // has started; once we're actually dragging, no default gesture
     // (panning in any direction) should be allowed to compete with it.
+    // We replace that native panning with our own edge auto-scroll below,
+    // so dragging toward the edge of the screen still reaches bays that
+    // are currently off-screen.
     const prevTouchAction = sourceEl.style.touchAction;
     sourceEl.style.touchAction = 'none';
 
@@ -2527,14 +2530,20 @@
     document.body.appendChild(ghost);
 
     let currentTarget = null;
+    let curX = startX, curY = startY;
+    const scrollContainer = sourceEl.closest('.plan-scroll');
+    const EDGE_ZONE = 46;      // px from the screen edge that triggers scrolling
+    const MAX_SCROLL_SPEED = 16; // px per frame at the very edge
+    let scrolling = true;
 
-    function onMove(e){
-      e.preventDefault();
-      const dx = e.clientX - startX, dy = e.clientY - startY;
+    function updateGhostPosition(){
+      const dx = curX - startX, dy = curY - startY;
       ghost.style.transform = `translate(${dx}px, ${dy}px) scale(1.06)`;
+    }
 
+    function updateDropTarget(){
       ghost.style.display = 'none';
-      const under = document.elementFromPoint(e.clientX, e.clientY);
+      const under = document.elementFromPoint(curX, curY);
       ghost.style.display = '';
       const targetEl = under ? under.closest('.spot:not(.gap):not(.door)') : null;
 
@@ -2545,7 +2554,36 @@
       }
     }
 
+    function autoScrollStep(){
+      if(!scrolling) return;
+      if(scrollContainer){
+        const r = scrollContainer.getBoundingClientRect();
+        let dx = 0;
+        if(curX < r.left + EDGE_ZONE){
+          dx = -MAX_SCROLL_SPEED * Math.min(1, (r.left + EDGE_ZONE - curX) / EDGE_ZONE);
+        } else if(curX > r.right - EDGE_ZONE){
+          dx = MAX_SCROLL_SPEED * Math.min(1, (curX - (r.right - EDGE_ZONE)) / EDGE_ZONE);
+        }
+        if(dx !== 0){
+          scrollContainer.scrollLeft += dx;
+          // Content shifts under a finger that may not be moving right now
+          // (it's just sitting in the edge zone) — re-check what's under it.
+          updateDropTarget();
+        }
+      }
+      requestAnimationFrame(autoScrollStep);
+    }
+    requestAnimationFrame(autoScrollStep);
+
+    function onMove(e){
+      e.preventDefault();
+      curX = e.clientX; curY = e.clientY;
+      updateGhostPosition();
+      updateDropTarget();
+    }
+
     function cleanup(){
+      scrolling = false;
       sourceEl.removeEventListener('pointermove', onMove);
       sourceEl.removeEventListener('pointerup', onUp);
       sourceEl.removeEventListener('pointercancel', onCancel);
