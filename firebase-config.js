@@ -39,22 +39,22 @@
 //      sync automatically whenever you're online.
 // ─────────────────────────────────────────────────────────────────
 
-const FIREBASE_ENABLED = false;
+const FIREBASE_ENABLED = true;
 
 const firebaseConfig = {
-  apiKey: "",
-  databaseURL: "",
-  projectId: "",
+  apiKey: "AIzaSyAM7A6huZzCnTiGgXymOpS-3uzelzn0gjI",
+  databaseURL: "https://stalling-plattegrond-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "stalling-plattegrond",
   // The 4 fields below are only needed if you turn on NIEUWE_KLANTEN_ENABLED
   // further down this file — everything else in this app ignores them, so
   // it's fine to leave them blank otherwise.
-  authDomain: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: "",
+  authDomain: "stalling-plattegrond.firebaseapp.com",
+  storageBucket: "stalling-plattegrond.firebasestorage.app",
+  messagingSenderId: "164944812598",
+  appId: "1:164944812598:web:163b7567328b5627055697",
 };
 
-const SYNC_PATH = "YOUR-PRIVATE-PATH-HERE";
+const SYNC_PATH = "Plattegrond-111ws-qbh3Tm791";
 
 // ─────────────────────────────────────────────────────────────────
 // PIN GATE (optional)
@@ -74,7 +74,7 @@ const SYNC_PATH = "YOUR-PRIVATE-PATH-HERE";
 // entirely — the app then behaves exactly as before.
 // ─────────────────────────────────────────────────────────────────
 
-const APP_PIN = "";
+const APP_PIN = "0808";
 
 // ─────────────────────────────────────────────────────────────────
 // REAL LOGIN (optional — a stronger alternative to the PIN above)
@@ -115,7 +115,7 @@ const APP_PIN = "";
 // Leave as false to keep using the PIN (or no gate at all).
 // ─────────────────────────────────────────────────────────────────
 
-const USE_REAL_LOGIN = false;
+const USE_REAL_LOGIN = true;
 
 // ─────────────────────────────────────────────────────────────────
 // AGENDA / PICKUP APPOINTMENTS (optional)
@@ -169,7 +169,7 @@ const USE_REAL_LOGIN = false;
 // Leave this blank to turn the whole feature off — nothing else changes.
 // ─────────────────────────────────────────────────────────────────
 
-const APPOINTMENTS_PATH = "";
+const APPOINTMENTS_PATH = "pickup-appointments";
 
 // ─────────────────────────────────────────────────────────────────
 // BLOCKED PICKUP DATES (optional, needs Agenda set up above)
@@ -204,7 +204,7 @@ const APPOINTMENTS_PATH = "";
 // Leave blank to turn this feature off.
 // ─────────────────────────────────────────────────────────────────
 
-const BLOCKED_DATES_PATH = "";
+const BLOCKED_DATES_PATH = "blocked-dates";
 
 // ─────────────────────────────────────────────────────────────────
 // NIEUWE KLANTEN / NEW CUSTOMERS FROM THE CONTRACT SYSTEM (optional)
@@ -245,4 +245,4 @@ const BLOCKED_DATES_PATH = "";
 // Leave as false to turn this feature off entirely.
 // ─────────────────────────────────────────────────────────────────
 
-const NIEUWE_KLANTEN_ENABLED = false;
+const NIEUWE_KLANTEN_ENABLED = true;
