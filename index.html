@@ -3433,7 +3433,8 @@
   // ---------- real login (email/password via Firebase Authentication) ----------
   function showLoginGate(){
     initFirebaseAppOnce();
-    let handledFirstState = false;
+    let hasLoadedOnce = false;
+    let hasSeenFirstState = false;
 
     firebase.auth().onAuthStateChanged((user) => {
       const gate = document.getElementById('loginGate');
@@ -3443,17 +3444,18 @@
         const logoutLine = document.getElementById('logoutLine');
         logoutLine.style.display = 'block';
         document.getElementById('logoutEmailText').textContent = user.email || '';
-        if(!handledFirstState){
-          handledFirstState = true;
+        hasSeenFirstState = true;
+        if(!hasLoadedOnce){
+          hasLoadedOnce = true;
           load();
         }
       } else {
-        if(handledFirstState){
+        if(hasSeenFirstState){
           // was logged in, just signed out — cleanest way back to a fresh gate
           location.reload();
           return;
         }
-        handledFirstState = true;
+        hasSeenFirstState = true;
         document.getElementById('sheet').style.display = 'none';
         gate.style.display = 'flex';
         document.getElementById('loginEmailInput').focus();
