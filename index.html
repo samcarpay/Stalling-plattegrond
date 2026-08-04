@@ -107,6 +107,8 @@
     flex-wrap:wrap;
   }
   .titleblock-left{flex:1;min-width:220px;}
+  .titleblock-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;}
+  .toolbar-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;}
   .eyebrow{
     font-family:var(--font-display);
     font-size:11px;
@@ -187,7 +189,9 @@
     font-size:9px;line-height:1;flex-shrink:0;
     cursor:pointer;
   }
-  .wh-tab:hover .wh-tab-edit{display:flex;}
+  @media (hover: hover){
+    .wh-tab:hover .wh-tab-edit{display:flex;}
+  }
   .wh-tab-del{
     display:none;
     width:15px;height:15px;border-radius:50%;
@@ -195,7 +199,9 @@
     background:rgba(0,0,0,.12);
     font-size:9px;line-height:1;flex-shrink:0;
   }
-  .wh-tab:hover .wh-tab-del{display:flex;}
+  @media (hover: hover){
+    .wh-tab:hover .wh-tab-del{display:flex;}
+  }
   .wh-tab-add{
     flex-shrink:0;
     padding:7px 12px;
@@ -455,7 +461,9 @@
     display:none;align-items:center;justify-content:center;
     cursor:pointer;
   }
-  .spot:hover .spot-del{display:flex;}
+  @media (hover: hover){
+    .spot:hover .spot-del{display:flex;}
+  }
 
   .spot.long-stay{border-left-width:4px;border-left-color:var(--trailer);}
   .long-stay-badge{
@@ -575,6 +583,7 @@
     padding:7px;margin-bottom:7px;background:var(--paper);
   }
   .occ-row-top{display:flex;gap:5px;align-items:center;margin-bottom:5px;}
+  .occ-row-top .occ-name{flex:2;}
   .occ-row-contact{display:flex;gap:5px;margin-bottom:5px;}
   .occ-row-contact input{flex:1;}
   .occ-row input{
@@ -667,6 +676,59 @@
     color:#444;font-size:8px;font-style:italic;margin-top:3px;
     overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
   }
+  /* ============================================================
+     TOUCH DEVICES
+     Anything hidden-until-hover on desktop needs to be visible by
+     default here, since touchscreens don't have a real hover state
+     — buttons that only ever appear on :hover are invisible on a
+     phone. Slightly larger touch targets too, since a precise mouse
+     click and a fingertip aren't the same kind of "precise".
+     ============================================================ */
+  @media (hover:none){
+    .wh-tab-edit, .wh-tab-del{
+      display:flex;
+      width:20px;height:20px;
+    }
+    .spot-del{
+      display:flex;
+      width:22px;height:22px;
+      top:-9px;right:-9px;
+    }
+  }
+
+  /* ============================================================
+     NARROW SCREENS
+     ============================================================ */
+  @media (max-width:640px){
+    /* Prevent iOS Safari's automatic zoom-on-focus, which otherwise
+       fires on any text input styled under 16px. */
+    input, select, textarea{ font-size:16px !important; }
+
+    /* The most-used modal in the app — editing bay occupants.
+       Name / reg / date / delete-button in one row is fine on a
+       laptop but far too cramped on a phone; wrap it into two
+       comfortable rows instead. */
+    .occ-row-top{ flex-wrap:wrap; }
+    .occ-row-top .occ-name{ flex-basis:100%; }
+    .occ-row-top .occ-reg{ flex:1; min-width:90px; }
+    .occ-row-top .occ-since{ flex:1; min-width:120px; }
+    .occ-row-contact{ flex-wrap:wrap; }
+    .occ-row-contact input{ min-width:140px; }
+
+    /* Titleblock stacks more comfortably with less side padding lost
+       to the logo at this width. */
+    .titleblock-right{ align-items:flex-start; width:100%; }
+    .toolbar-actions{ justify-content:flex-start; }
+
+    /* Modal padding, slightly tightened so more content is visible
+       without scrolling on a small screen. */
+    .modal{ padding:18px 16px; }
+
+    /* Search filters row — the free-only checkbox has room to sit on
+       its own line rather than fighting the dropdown for space. */
+    .search-filters{ gap:8px 14px; }
+  }
+
   @media print{
     body *{visibility:hidden;}
     .print-only, .print-only *{visibility:visible;}
@@ -728,9 +790,9 @@
         <div class="scale-note">Klik op een plek om te bewerken · houd ingedrukt en sleep om te wisselen</div>
       </div>
     </div>
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+    <div class="titleblock-right">
       <div class="stats" id="stats"></div>
-      <div style="display:flex;gap:6px;">
+      <div class="toolbar-actions">
         <button class="btn ghost small" id="backupsBtn">Back-ups</button>
         <button class="btn ghost small" id="blockedDatesBtn" style="display:none;">Geblokkeerde data</button>
         <button class="btn ghost small" id="printBtn">Afdrukken</button>
@@ -2838,7 +2900,7 @@
       listEl.innerHTML = occDraft.map((o, idx) => `
         <div class="occ-row" data-occ-idx="${idx}">
           <div class="occ-row-top">
-            <input type="text" class="occ-name" placeholder="Naam eigenaar / klant" value="${escapeAttr(o.name)}" style="flex:2;" />
+            <input type="text" class="occ-name" placeholder="Naam eigenaar / klant" value="${escapeAttr(o.name)}" />
             <input type="text" class="occ-reg" placeholder="Kenteken" value="${escapeAttr(o.reg)}" />
             <input type="date" class="occ-since" value="${escapeAttr(o.since)}" title="Gestald sinds" />
             <button class="occ-remove" data-remove-occ="${idx}" title="Dit voertuig verwijderen">✕</button>
