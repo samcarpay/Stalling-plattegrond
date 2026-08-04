@@ -1518,15 +1518,25 @@
     const container = document.createElement('div');
     container.className = 'overview';
 
+    const toolbarRow = document.createElement('div');
+    toolbarRow.style.cssText = 'display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;';
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn small';
+    addBtn.textContent = '+ Nieuwe afspraak';
+    addBtn.addEventListener('click', () => openNewAppointmentModal());
+    toolbarRow.appendChild(addBtn);
+
     const historyToggle = document.createElement('button');
     historyToggle.className = 'btn ghost small';
-    historyToggle.style.marginBottom = '14px';
     historyToggle.textContent = showAgendaHistory ? 'Geschiedenis verbergen' : 'Geschiedenis tonen (afgeronde ophalingen)';
     historyToggle.addEventListener('click', () => {
       showAgendaHistory = !showAgendaHistory;
       renderAgendaPage();
     });
-    container.appendChild(historyToggle);
+    toolbarRow.appendChild(historyToggle);
+
+    container.appendChild(toolbarRow);
 
     const active = appointments.filter(a => a.status !== 'done');
     if(active.length === 0 && !showAgendaHistory){
@@ -1876,6 +1886,68 @@
   // Set right before opening the bay modal for a placement, read (and
   // cleared) inside openSpotModal's save handler.
   let pendingPlacementAanvraagId = null;
+
+  // ---------- modal: staff manually adds a pickup appointment ----------
+  function openNewAppointmentModal(){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal';
+    body.innerHTML = `
+      <h3>Nieuwe afspraak</h3>
+      <div class="sub">Voor een klant die belt of langskomt in plaats van het formulier op de website te gebruiken.</div>
+      <div class="field">
+        <label>Naam</label>
+        <input type="text" id="naName" placeholder="Naam klant" />
+      </div>
+      <div class="field">
+        <label>Contact (e-mail of telefoon)</label>
+        <input type="text" id="naContact" placeholder="e-mailadres of telefoonnummer" />
+      </div>
+      <div class="field">
+        <label>Object / kenteken / object nummer</label>
+        <input type="text" id="naVehicle" placeholder="bijv. object nummer of omschrijving" />
+      </div>
+      <div class="field">
+        <label>Ophaaldatum</label>
+        <input type="date" id="naDate" onchange="this.blur()" />
+      </div>
+      <div class="field">
+        <label>Notities (optioneel)</label>
+        <textarea id="naNotes"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="naCancelBtn">Annuleren</button>
+        <button class="btn" id="naSaveBtn">Toevoegen</button>
+      </div>
+    `;
+    overlay.classList.add('show');
+    document.getElementById('naName').focus();
+
+    document.getElementById('naCancelBtn').addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
+
+    document.getElementById('naSaveBtn').addEventListener('click', () => {
+      const name = document.getElementById('naName').value.trim();
+      const contact = document.getElementById('naContact').value.trim();
+      const vehicleDesc = document.getElementById('naVehicle').value.trim();
+      const date = document.getElementById('naDate').value;
+      const notes = document.getElementById('naNotes').value.trim();
+
+      if(!name || !date){
+        alert('Vul in elk geval een naam en een datum in.');
+        return;
+      }
+      if(!appointmentsRef) return;
+
+      appointmentsRef.push({
+        name, contact, vehicleDesc, date, notes,
+        createdAt: Date.now(),
+        linked: null,
+        status: 'requested',
+      });
+      closeModal();
+    });
+  }
 
   function openLinkAppointmentModal(appointmentId){
     const appt = appointments.find(a => a.id === appointmentId);
