@@ -1099,6 +1099,7 @@
   let nieuweKlanten = [];      // signed ('voltooid') contracts not yet placed into a bay
   let contractDb = null;
   let showNieuweKlanten = false; // UI-only, not persisted
+  let showWinterstalling = false; // UI-only, not persisted
 
   function initNieuweKlantenSync(){
     if(!hasFirebaseSync || typeof NIEUWE_KLANTEN_ENABLED === 'undefined' || !NIEUWE_KLANTEN_ENABLED || !firebase.firestore) return;
@@ -1512,6 +1513,12 @@
       document.getElementById('legend').innerHTML = '';
       document.getElementById('whPurpose').innerHTML = '';
       renderNieuweKlantenPage();
+    } else if(showWinterstalling){
+      document.getElementById('stats').innerHTML = '';
+      document.getElementById('globalStatLine').innerHTML = '';
+      document.getElementById('legend').innerHTML = '';
+      document.getElementById('whPurpose').innerHTML = '';
+      renderWinterstallingPage();
     } else if(showOverview){
       renderOverviewStats();
       document.getElementById('legend').innerHTML = '';
@@ -1893,6 +1900,123 @@
   }
 
   // ---------- nieuwe klanten page ----------
+  // ---------- winterstalling: consolidated view across all Winter warehouses ----------
+  // Finds every occupied bay whose objectNummer matches, in any warehouse
+  // OTHER than the one given — used to show "this customer also currently
+  // holds a spot elsewhere" without needing a separate manual link, since
+  // the outdoor bay itself doesn't stay reserved for them over winter.
+  function findOtherBaysWithObjectNummer(objectNummer, excludeWarehouseId){
+    const q = (objectNummer || '').trim().toLowerCase();
+    if(!q) return [];
+    const matches = [];
+    state.warehouses.forEach(w => {
+      if(w.id === excludeWarehouseId) return;
+      const hasAisle = w.layout !== 'single';
+      const sides = hasAisle ? [['left','L'],['right','R']] : [['left','']];
+      sides.forEach(([key, tagPrefix]) => {
+        w[key].forEach(row => {
+          row.spots.forEach(spot => {
+            if(spot.removed || spot.isDoor) return;
+            (spot.occupants || []).forEach(o => {
+              if((o.objectNummer || '').trim().toLowerCase() === q){
+                matches.push({ warehouse: w, spot, tagPrefix });
+              }
+            });
+          });
+        });
+      });
+    });
+    return matches;
+  }
+
+  function renderWinterstallingPage(){
+    const wrap = document.getElementById('plan');
+    wrap.innerHTML = '';
+
+    const container = document.createElement('div');
+    container.className = 'overview';
+
+    const winterWarehouses = state.warehouses.filter(w => /winter/i.test(w.name));
+    const rows = [];
+    winterWarehouses.forEach(w => {
+      const hasAisle = w.layout !== 'single';
+      const sides = hasAisle ? [['left','L'],['right','R']] : [['left','']];
+      sides.forEach(([key, tagPrefix]) => {
+        w[key].forEach(row => {
+          row.spots.forEach(spot => {
+            if(spot.removed || spot.isDoor) return;
+            (spot.occupants || []).forEach(o => {
+              if(!o.name && !o.reg && !o.objectNummer) return;
+              rows.push({ warehouse: w, spot, tagPrefix, occupant: o });
+            });
+          });
+        });
+      });
+    });
+
+    const intro = document.createElement('div');
+    intro.className = 'print-empty';
+    intro.style.cssText = 'text-align:left;padding:0 0 16px;color:var(--ink-soft);font-size:12.5px;';
+    intro.textContent = `Alle klanten die momenteel in het pad van een loods staan (winterstalling), verzameld uit ${winterWarehouses.map(w=>w.name).join(', ')}. Als hetzelfde object nummer ook ergens anders bezet is, staat dat erbij vermeld.`;
+    container.appendChild(intro);
+
+    if(rows.length === 0){
+      const empty = document.createElement('div');
+      empty.className = 'print-empty';
+      empty.textContent = 'Nog niemand in winterstalling.';
+      container.appendChild(empty);
+      wrap.appendChild(container);
+      return;
+    }
+
+    const section = document.createElement('div');
+    section.className = 'overview-section';
+    section.style.maxWidth = '720px';
+    section.innerHTML = `<h3 class="overview-h">Klanten in winterstalling (${rows.length})</h3>`;
+
+    rows.forEach(r => {
+      const t = TYPES[r.spot.type] || { color:'#7A7A7A', label:'Onbekend' };
+      const tag = displayTag(r.spot, r.tagPrefix);
+      const o = r.occupant;
+      const elsewhere = findOtherBaysWithObjectNummer(o.objectNummer, r.warehouse.id);
+
+      const card = document.createElement('div');
+      card.className = 'agenda-card';
+      card.innerHTML = `
+        <div class="agenda-card-top">
+          <div>
+            <div class="agenda-date"><span class="dot" style="background:${t.color}"></span> ${escapeHtml(r.warehouse.name)} · plek ${escapeHtml(tag)}</div>
+            <div class="agenda-name">${escapeHtml(o.name || 'Naam onbekend')}${o.reg ? ' · ' + escapeHtml(o.reg) : ''}</div>
+            <div class="agenda-sub">${o.objectNummer ? 'Object ' + escapeHtml(o.objectNummer) : 'Geen object nummer'}${o.phone ? ' · ' + escapeHtml(o.phone) : ''}${o.email ? ' · ' + escapeHtml(o.email) : ''}</div>
+            ${elsewhere.length > 0
+              ? `<div class="agenda-sub" style="color:var(--accent-dark, var(--ink));font-weight:600;">Ook bezet in: ${elsewhere.map(m => `${escapeHtml(m.warehouse.name)} · plek ${escapeHtml(displayTag(m.spot, m.tagPrefix))}`).join(', ')}</div>`
+              : (o.objectNummer ? `<div class="agenda-sub" style="color:var(--ink-soft);">Nu geen andere plek met dit object nummer.</div>` : '')
+            }
+          </div>
+          <div class="agenda-actions"></div>
+        </div>
+      `;
+      const actionsEl = card.querySelector('.agenda-actions');
+      const jumpBtn = document.createElement('button');
+      jumpBtn.className = 'btn ghost small';
+      jumpBtn.textContent = 'Open plek';
+      jumpBtn.addEventListener('click', () => {
+        showWinterstalling = false;
+        state.activeWarehouseId = r.warehouse.id;
+        render();
+        setTimeout(() => {
+          const el = document.querySelector(`[data-spot-id="${r.spot.id}"]`);
+          if(el) el.scrollIntoView({ behavior:'smooth', inline:'center', block:'center' });
+        }, 60);
+      });
+      actionsEl.appendChild(jumpBtn);
+      section.appendChild(card);
+    });
+
+    container.appendChild(section);
+    wrap.appendChild(container);
+  }
+
   function renderNieuweKlantenPage(){
     const wrap = document.getElementById('plan');
     wrap.innerHTML = '';
@@ -2200,6 +2324,7 @@
         showAgenda = true;
         showOverview = false;
         showNieuweKlanten = false;
+        showWinterstalling = false;
         render();
       });
       el.appendChild(agendaTab);
@@ -2213,9 +2338,26 @@
         showNieuweKlanten = true;
         showOverview = false;
         showAgenda = false;
+        showWinterstalling = false;
         render();
       });
       el.appendChild(nkTab);
+    }
+
+    const winterWarehouses = state.warehouses.filter(w => /winter/i.test(w.name));
+    if(winterWarehouses.length > 0){
+      const winterCount = winterWarehouses.reduce((sum, w) => sum + warehouseSpots(w).filter(s => s.occupants && s.occupants.length > 0).length, 0);
+      const winterTab = document.createElement('div');
+      winterTab.className = 'wh-tab' + (showWinterstalling ? ' active' : '');
+      winterTab.innerHTML = `<span class="wh-tab-name-text">❄️ Winterstalling</span>` + (winterCount ? `<span class="wh-count">${winterCount}</span>` : '');
+      winterTab.addEventListener('click', () => {
+        showWinterstalling = true;
+        showOverview = false;
+        showAgenda = false;
+        showNieuweKlanten = false;
+        render();
+      });
+      el.appendChild(winterTab);
     }
 
     const overviewTab = document.createElement('div');
@@ -2225,6 +2367,7 @@
       showOverview = true;
       showAgenda = false;
       showNieuweKlanten = false;
+      showWinterstalling = false;
       render();
     });
     el.appendChild(overviewTab);
@@ -2233,7 +2376,7 @@
       const spots = warehouseSpots(w);
       const occ = spots.filter(s => s.occupants && s.occupants.length > 0).length;
       const tab = document.createElement('div');
-      tab.className = 'wh-tab' + (!showOverview && !showAgenda && !showNieuweKlanten && w.id === state.activeWarehouseId ? ' active' : '');
+      tab.className = 'wh-tab' + (!showOverview && !showAgenda && !showNieuweKlanten && !showWinterstalling && w.id === state.activeWarehouseId ? ' active' : '');
       tab.innerHTML = `
         <span class="wh-tab-name-text">${escapeHtml(w.name)}</span>
         <span class="wh-count">${occ}/${spots.length}</span>
@@ -2245,6 +2388,7 @@
         showOverview = false;
         showAgenda = false;
         showNieuweKlanten = false;
+        showWinterstalling = false;
         state.activeWarehouseId = w.id;
         render();
       });
