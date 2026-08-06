@@ -480,13 +480,6 @@
     font-family:var(--font-display);font-size:8px;font-weight:700;letter-spacing:.05em;
     padding:2px 5px;border-radius:2px;
   }
-  .winter-badge{
-    position:absolute;bottom:-7px;left:-7px;
-    width:16px;height:16px;border-radius:50%;
-    background:#3c6e9e;color:var(--card);
-    font-size:9px;line-height:1;
-    display:flex;align-items:center;justify-content:center;
-  }
 
   .add-spot-wrap{position:relative;flex-shrink:0;}
   .add-spot-btn{
@@ -2551,13 +2544,11 @@
 
   function renderLegend(){
     const el = document.getElementById('legend');
-    const hasWinterWarehouses = state.warehouses.some(w => /winter/i.test(w.name));
     el.innerHTML = Object.entries(TYPES).map(([key,t]) =>
       `<div class="legend-item"><span class="swatch" style="background:${t.color}"></span>${t.label}</div>`
     ).join('')
       + `<div class="legend-item"><span class="swatch" style="background:var(--paper-line)"></span>Lege plek</div>`
-      + `<div class="legend-item"><span class="swatch" style="background:var(--trailer)"></span>⏱ Langer dan 1 jaar</div>`
-      + (hasWinterWarehouses ? `<div class="legend-item"><span class="swatch" style="background:#3c6e9e"></span>❄️ Heeft ook plek in winterstalling</div>` : '');
+      + `<div class="legend-item"><span class="swatch" style="background:var(--trailer)"></span>⏱ Langer dan 1 jaar</div>`;
   }
 
   function rowLabel(sideName, idx, hasAisle){
@@ -2652,32 +2643,6 @@
     return (spot.label && spot.label.trim()) ? spot.label.trim() : autoTag(tagPrefix, spot.seq);
   }
 
-  // True if any occupant of this spot also currently holds a bay in a
-  // warehouse whose name contains "winter" — used to flag customers in
-  // the normal (e.g. outdoor) warehouses who are also winter-storage
-  // customers, so staff spot the overlap while browsing normally.
-  function occupantAlsoInWinterStorage(spot, excludeWarehouseId){
-    const objNums = (spot.occupants || []).map(o => (o.objectNummer || '').trim().toLowerCase()).filter(Boolean);
-    if(objNums.length === 0) return false;
-    const winterWarehouses = state.warehouses.filter(w => /winter/i.test(w.name) && w.id !== excludeWarehouseId);
-    if(winterWarehouses.length === 0) return false;
-    for(const w of winterWarehouses){
-      const hasAisle = w.layout !== 'single';
-      const sides = hasAisle ? ['left','right'] : ['left'];
-      for(const key of sides){
-        for(const row of w[key]){
-          for(const s of row.spots){
-            if(s.removed || s.isDoor) continue;
-            for(const o of (s.occupants || [])){
-              if(objNums.includes((o.objectNummer || '').trim().toLowerCase())) return true;
-            }
-          }
-        }
-      }
-    }
-    return false;
-  }
-
   function renderSpot(row, spot, sideName, rowIdx, sIdx, tagPrefix){
     const el = document.createElement('div');
     const w = widthFor(spot.length);
@@ -2720,7 +2685,6 @@
       const t = TYPES[spot.type] || { color:'#7A7A7A', label:'Onbekend' };
       const longStay = spot.occupants.some(o => isLongStay(o.since));
       const anyAway = spot.occupants.some(o => o.away);
-      const alsoWinter = !/winter/i.test(activeWarehouse().name) && occupantAlsoInWinterStorage(spot, state.activeWarehouseId);
       el.className = 'spot' + (longStay ? ' long-stay' : '') + (anyAway ? ' is-away' : '');
       el.style.background = hexAlpha(t.color, 0.16);
       el.style.borderColor = t.color;
@@ -2734,7 +2698,6 @@
         <div class="spot-del" data-clear="${spot.id}" title="Plek leegmaken">✕</div>
         ${longStay ? `<div class="long-stay-badge" title="Langer dan een jaar gestald">⏱</div>` : ''}
         ${anyAway ? `<div class="away-badge" title="Momenteel weg — tijdelijk opgehaald">WEG</div>` : ''}
-        ${alsoWinter ? `<div class="winter-badge" title="Heeft ook een plek in winterstalling">❄️</div>` : ''}
         <div class="spot-id">${escapeHtml(tag)}</div>
         <div>
           <div class="spot-label">${escapeHtml(primary)}</div>
