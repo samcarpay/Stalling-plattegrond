@@ -2916,6 +2916,41 @@
   // outdoor bay into a Winter warehouse's aisle. Returns the first match
   // found (warehouse + bay tag), or null if there isn't one, so the badge
   // can show exactly where the customer's other spot is.
+  // Checks whether an object nummer is already used elsewhere in a way that
+  // should be BLOCKED as a likely mistake. Two regular occupants sharing an
+  // object nummer is blocked (almost certainly a typo). A regular occupant
+  // and a Winterklant sharing one is fine — that's the intended way to note
+  // someone using a bay seasonally — so that combination is never blocked.
+  // excludeSpotId leaves the bay currently being edited out of the check,
+  // since its own pre-save values are about to be overwritten anyway.
+  function findBlockingDuplicateObjectNummer(objectNummer, kind, excludeSpotId){
+    const q = (objectNummer || '').trim().toLowerCase();
+    if(!q) return null;
+    for(const w of state.warehouses){
+      const hasAisle = w.layout !== 'single';
+      const sides = hasAisle ? ['left','right'] : ['left'];
+      for(const key of sides){
+        for(const row of w[key]){
+          for(const s of row.spots){
+            if(s.removed || s.isDoor || s.id === excludeSpotId) continue;
+            if(kind === 'occupant'){
+              for(const o of (s.occupants || [])){
+                if((o.objectNummer || '').trim().toLowerCase() === q){
+                  return { warehouse: w, spot: s };
+                }
+              }
+            } else {
+              if(s.winterKlant && (s.winterKlant.objectNummer || '').trim().toLowerCase() === q){
+                return { warehouse: w, spot: s };
+              }
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   function findOccupantElsewhere(spot, excludeWarehouseId){
     const objNums = (spot.occupants || []).map(o => (o.objectNummer || '').trim().toLowerCase()).filter(Boolean);
     if(spot.winterKlant && spot.winterKlant.objectNummer){
@@ -3356,6 +3391,7 @@
         <button class="btn ghost" id="cancelBtn">Annuleren</button>
         <button class="btn" id="saveBtn">Opslaan</button>
       </div>
+      <div id="spotSaveError" style="display:none;color:var(--car);font-size:12px;margin-top:10px;"></div>
     `;
 
     function renderOccList(){
@@ -3442,8 +3478,43 @@
     }
 
     document.getElementById('saveBtn').addEventListener('click', () => {
-      const label = document.getElementById('fLabel').value.trim();
+      const errorEl = document.getElementById('spotSaveError');
+      errorEl.style.display = 'none';
+
       const isDoor = document.getElementById('fIsDoor').checked;
+      const winterObjNum = document.getElementById('fWinterObjNum').value.trim();
+
+      // Validate object nummers before committing any changes to the spot.
+      if(!isDoor){
+        const seenInDraft = new Set();
+        for(const o of occDraft){
+          const num = o.objectNummer.trim();
+          if(!num) continue;
+          const key = num.toLowerCase();
+          if(seenInDraft.has(key)){
+            errorEl.textContent = `Object nummer "${num}" staat hier al bij een ander voertuig op dezelfde plek.`;
+            errorEl.style.display = 'block';
+            return;
+          }
+          seenInDraft.add(key);
+          const dup = findBlockingDuplicateObjectNummer(num, 'occupant', spot.id);
+          if(dup){
+            errorEl.textContent = `Object nummer "${num}" is al in gebruik bij een andere plek (${dup.warehouse.name}). Kies een ander nummer, of gebruik het Winterklant-veld hieronder als dit bewust is.`;
+            errorEl.style.display = 'block';
+            return;
+          }
+        }
+      }
+      if(winterObjNum){
+        const dup = findBlockingDuplicateObjectNummer(winterObjNum, 'winterKlant', spot.id);
+        if(dup){
+          errorEl.textContent = `Object nummer "${winterObjNum}" is al in gebruik als Winterklant bij een andere plek (${dup.warehouse.name}).`;
+          errorEl.style.display = 'block';
+          return;
+        }
+      }
+
+      const label = document.getElementById('fLabel').value.trim();
       spot.label = label;
       spot.isDoor = isDoor;
 
