@@ -3632,10 +3632,32 @@
         <h3>Prijslijst</h3>
         <div class="sub">Prijs per opslagtype — alleen zichtbaar en aan te passen door jou hier in de app, niet zichtbaar voor klanten.</div>
         <div id="prijslijstList">${listHtml}</div>
+
+        <div class="field" style="border:1px solid var(--line);border-radius:var(--radius);padding:10px;background:var(--paper);margin-top:14px;">
+          <label style="margin-bottom:8px;">Rekenhulp — lengte × prijs per meter</label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input type="number" id="calcLength" placeholder="Lengte (m)" min="0" step="0.1" style="width:110px;" />
+            <span style="font-size:12px;color:var(--ink-soft);">×</span>
+            <span style="font-size:12px;color:var(--ink-soft);">€</span>
+            <input type="number" id="calcPerMeter" placeholder="Per meter" min="0" step="0.01" style="width:100px;" />
+            <span style="font-size:12px;color:var(--ink-soft);">=</span>
+            <span id="calcResult" style="font-weight:700;font-size:14px;color:var(--ink);">€ 0,00</span>
+          </div>
+        </div>
+
         <div class="modal-actions">
           <button class="btn" id="donePrijslijstBtn">Klaar</button>
         </div>
       `;
+
+      function updateCalc(){
+        const len = parseFloat(document.getElementById('calcLength').value) || 0;
+        const perM = parseFloat(document.getElementById('calcPerMeter').value) || 0;
+        const total = len * perM;
+        document.getElementById('calcResult').textContent = '€ ' + total.toLocaleString('nl-NL', { minimumFractionDigits:2, maximumFractionDigits:2 });
+      }
+      document.getElementById('calcLength').addEventListener('input', updateCalc);
+      document.getElementById('calcPerMeter').addEventListener('input', updateCalc);
 
       body.querySelectorAll('.pl-price').forEach(inp => {
         inp.addEventListener('change', () => {
