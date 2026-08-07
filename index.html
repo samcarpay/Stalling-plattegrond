@@ -2916,14 +2916,29 @@
   // outdoor bay into a Winter warehouse's aisle. Returns the first match
   // found (warehouse + bay tag), or null if there isn't one, so the badge
   // can show exactly where the customer's other spot is.
+  // Loose "is this plausibly the same person" check — handles the natural
+  // variation real records have for the same customer (nicknames, only a
+  // surname the second time, "Ronald en Greet" vs "Ronald/Greet", etc.)
+  // without needing an exact match. Dutch connector words and very short
+  // fragments are ignored so they don't cause false matches on their own.
+  function namesLikelyMatch(a, b){
+    const stopWords = new Set(['en','de','van','vd','v','der','den','het','tot','een']);
+    const words = (s) => (s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/)
+      .filter(w => w.length >= 3 && !stopWords.has(w));
+    const wordsA = words(a), wordsB = words(b);
+    if(wordsA.length === 0 || wordsB.length === 0) return false;
+    return wordsA.some(w => wordsB.includes(w));
+  }
+
   // Checks whether an object nummer is already used elsewhere in a way that
-  // should be BLOCKED as a likely mistake. Two regular occupants sharing an
-  // object nummer is blocked (almost certainly a typo). A regular occupant
-  // and a Winterklant sharing one is fine — that's the intended way to note
-  // someone using a bay seasonally — so that combination is never blocked.
+  // should be BLOCKED as a likely mistake. The same object nummer under the
+  // same (or plausibly the same) customer name is the normal, intended way
+  // to show a customer has a different bay for another season — that's
+  // never blocked. It's only blocked when the SAME object nummer turns up
+  // under a clearly DIFFERENT name, which is almost certainly a typo.
   // excludeSpotId leaves the bay currently being edited out of the check,
   // since its own pre-save values are about to be overwritten anyway.
-  function findBlockingDuplicateObjectNummer(objectNummer, kind, excludeSpotId){
+  function findBlockingDuplicateObjectNummer(objectNummer, name, kind, excludeSpotId){
     const q = (objectNummer || '').trim().toLowerCase();
     if(!q) return null;
     for(const w of state.warehouses){
@@ -2935,13 +2950,13 @@
             if(s.removed || s.isDoor || s.id === excludeSpotId) continue;
             if(kind === 'occupant'){
               for(const o of (s.occupants || [])){
-                if((o.objectNummer || '').trim().toLowerCase() === q){
-                  return { warehouse: w, spot: s };
+                if((o.objectNummer || '').trim().toLowerCase() === q && !namesLikelyMatch(name, o.name)){
+                  return { warehouse: w, spot: s, otherName: o.name };
                 }
               }
             } else {
-              if(s.winterKlant && (s.winterKlant.objectNummer || '').trim().toLowerCase() === q){
-                return { warehouse: w, spot: s };
+              if(s.winterKlant && (s.winterKlant.objectNummer || '').trim().toLowerCase() === q && !namesLikelyMatch(name, s.winterKlant.name)){
+                return { warehouse: w, spot: s, otherName: s.winterKlant.name };
               }
             }
           }
@@ -3497,18 +3512,19 @@
             return;
           }
           seenInDraft.add(key);
-          const dup = findBlockingDuplicateObjectNummer(num, 'occupant', spot.id);
+          const dup = findBlockingDuplicateObjectNummer(num, o.name, 'occupant', spot.id);
           if(dup){
-            errorEl.textContent = `Object nummer "${num}" is al in gebruik bij een andere plek (${dup.warehouse.name}). Kies een ander nummer, of gebruik het Winterklant-veld hieronder als dit bewust is.`;
+            errorEl.textContent = `Object nummer "${num}" is al in gebruik door "${dup.otherName || 'iemand anders'}" bij een andere plek (${dup.warehouse.name}). Klopt de naam niet, controleer het nummer — is dit wel dezelfde klant, pas dan de naam aan zodat ze overeenkomen.`;
             errorEl.style.display = 'block';
             return;
           }
         }
       }
       if(winterObjNum){
-        const dup = findBlockingDuplicateObjectNummer(winterObjNum, 'winterKlant', spot.id);
+        const winterName = document.getElementById('fWinterName').value.trim();
+        const dup = findBlockingDuplicateObjectNummer(winterObjNum, winterName, 'winterKlant', spot.id);
         if(dup){
-          errorEl.textContent = `Object nummer "${winterObjNum}" is al in gebruik als Winterklant bij een andere plek (${dup.warehouse.name}).`;
+          errorEl.textContent = `Object nummer "${winterObjNum}" is al in gebruik door "${dup.otherName || 'iemand anders'}" als Winterklant bij een andere plek (${dup.warehouse.name}).`;
           errorEl.style.display = 'block';
           return;
         }
