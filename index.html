@@ -1613,17 +1613,18 @@
     let whRows = state.warehouses.map(w => {
       const spots = warehouseSpots(w);
       const occupied = spots.filter(s => s.occupants && s.occupants.length > 0).length;
+      const away = spots.filter(s => s.occupants && s.occupants.some(o => o.away)).length;
       const doors = warehouseRows(w).flatMap(r => r.spots).filter(s => s.isDoor && !s.removed).length;
-      return { id: w.id, name: w.name, total: spots.length, occupied, free: spots.length - occupied, doors };
+      return { id: w.id, name: w.name, total: spots.length, occupied, free: spots.length - occupied, away, doors };
     });
     const whTotals = whRows.reduce((acc, r) => ({
-      total: acc.total + r.total, occupied: acc.occupied + r.occupied, free: acc.free + r.free
-    }), { total:0, occupied:0, free:0 });
+      total: acc.total + r.total, occupied: acc.occupied + r.occupied, free: acc.free + r.free, away: acc.away + r.away
+    }), { total:0, occupied:0, free:0, away:0 });
 
     whSection.innerHTML = `
       <h3 class="overview-h">Beschikbare plekken per loods</h3>
       <table class="overview-table">
-        <thead><tr><th>Loods</th><th>Plekken</th><th>In gebruik</th><th>Vrij</th></tr></thead>
+        <thead><tr><th>Loods</th><th>Plekken</th><th>In gebruik</th><th>Vrij</th><th>Weg</th></tr></thead>
         <tbody>
           ${whRows.map(r => `
             <tr class="ov-row" data-jump-wh="${r.id}" title="${escapeAttr(r.name)} openen">
@@ -1631,6 +1632,7 @@
               <td>${r.total}</td>
               <td>${r.occupied}</td>
               <td class="${r.free > 0 ? 'ov-free' : ''}">${r.free}</td>
+              <td>${r.away || ''}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -1640,6 +1642,7 @@
             <td>${whTotals.total}</td>
             <td>${whTotals.occupied}</td>
             <td>${whTotals.free}</td>
+            <td>${whTotals.away}</td>
           </tr>
         </tfoot>
       </table>
