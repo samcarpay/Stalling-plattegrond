@@ -499,6 +499,14 @@
     font-size:9px;line-height:1;
     display:flex;align-items:center;justify-content:center;
   }
+  .winterklant-badge{
+    position:absolute;bottom:-7px;right:-7px;
+    max-width:75%;
+    background:#3c6e9e;color:#fff;
+    font-family:var(--font-display);font-size:8px;font-weight:700;letter-spacing:.02em;
+    padding:2px 5px;border-radius:2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
 
   .add-spot-wrap{position:relative;flex-shrink:0;}
   .add-spot-btn{
@@ -929,7 +937,7 @@
   }
 
   function spotDefault(type, seq){
-    return { id: uid(), type, length: TYPES[type].length, occupants: [], seq, removed: false, isDoor: false };
+    return { id: uid(), type, length: TYPES[type].length, occupants: [], seq, removed: false, isDoor: false, winterKlant: { name:'', objectNummer:'' } };
   }
   function nextSeqFor(row){
     return row.spots.reduce((max, s) => Math.max(max, s.seq || 0), 0) + 1;
@@ -961,6 +969,12 @@
           if(typeof s.seq !== 'number') s.seq = i + 1;
           if(typeof s.removed !== 'boolean') s.removed = false;
           if(typeof s.isDoor !== 'boolean') s.isDoor = false;
+          if(!s.winterKlant || typeof s.winterKlant !== 'object'){
+            s.winterKlant = { name:'', objectNummer:'' };
+          } else {
+            if(typeof s.winterKlant.name !== 'string') s.winterKlant.name = '';
+            if(typeof s.winterKlant.objectNummer !== 'string') s.winterKlant.objectNummer = '';
+          }
           if(!Array.isArray(s.occupants)){
             s.occupants = s.occupant ? [s.occupant] : [];
           }
@@ -1948,6 +1962,9 @@
                 matches.push({ warehouse: w, spot, tagPrefix });
               }
             });
+            if(spot.winterKlant && (spot.winterKlant.objectNummer || '').trim().toLowerCase() === q){
+              matches.push({ warehouse: w, spot, tagPrefix });
+            }
           });
         });
       });
@@ -1975,6 +1992,13 @@
               if(!o.name && !o.reg && !o.objectNummer) return;
               rows.push({ warehouse: w, spot, tagPrefix, occupant: o });
             });
+            if(spot.winterKlant && (spot.winterKlant.name || spot.winterKlant.objectNummer)){
+              rows.push({
+                warehouse: w, spot, tagPrefix,
+                occupant: { name: spot.winterKlant.name, objectNummer: spot.winterKlant.objectNummer, reg:'', phone:'', email:'' },
+                isWinterKlant: true,
+              });
+            }
           });
         });
       });
@@ -2023,9 +2047,9 @@
       card.innerHTML = `
         <div class="agenda-card-top">
           <div>
-            <div class="agenda-date"><span class="dot" style="background:${t.color}"></span> ${o.objectNummer ? 'Object ' + escapeHtml(o.objectNummer) : 'Geen object nummer'}</div>
+            <div class="agenda-date"><span class="dot" style="background:${r.isWinterKlant ? '#3c6e9e' : t.color}"></span> ${o.objectNummer ? 'Object ' + escapeHtml(o.objectNummer) : 'Geen object nummer'}${r.isWinterKlant ? ' · ❄ Winterklant' : ''}</div>
             <div class="agenda-name">${escapeHtml(o.name || 'Naam onbekend')}${o.reg ? ' · ' + escapeHtml(o.reg) : ''}</div>
-            <div class="agenda-sub">${escapeHtml(r.warehouse.name)} · plek ${escapeHtml(tag)} · ${escapeHtml(t.label)}</div>
+            <div class="agenda-sub">${escapeHtml(r.warehouse.name)} · plek ${escapeHtml(tag)}${r.isWinterKlant ? ' (tijdelijk, over de winter)' : ' · ' + escapeHtml(t.label)}</div>
             ${(o.phone || o.email) ? `<div class="agenda-sub">${[o.phone, o.email].filter(Boolean).map(escapeHtml).join(' · ')}</div>` : ''}
           </div>
           <div class="agenda-actions"></div>
@@ -2851,6 +2875,9 @@
   // can show exactly where the customer's other spot is.
   function findOccupantElsewhere(spot, excludeWarehouseId){
     const objNums = (spot.occupants || []).map(o => (o.objectNummer || '').trim().toLowerCase()).filter(Boolean);
+    if(spot.winterKlant && spot.winterKlant.objectNummer){
+      objNums.push(spot.winterKlant.objectNummer.trim().toLowerCase());
+    }
     if(objNums.length === 0) return null;
     for(const w of state.warehouses){
       if(w.id === excludeWarehouseId) continue;
@@ -2864,6 +2891,9 @@
               if(objNums.includes((o.objectNummer || '').trim().toLowerCase())){
                 return { warehouse: w, spot: s, tag: displayTag(s, tagPrefix) };
               }
+            }
+            if(s.winterKlant && s.winterKlant.objectNummer && objNums.includes(s.winterKlant.objectNummer.trim().toLowerCase())){
+              return { warehouse: w, spot: s, tag: displayTag(s, tagPrefix) };
             }
           }
         }
@@ -2910,6 +2940,11 @@
       return el;
     }
 
+    const wk = spot.winterKlant;
+    const wkLabel = wk && (wk.name || wk.objectNummer) ? (wk.name || wk.objectNummer) : null;
+    const wkTitle = wk ? `Winterklant: ${wk.name || '(geen naam)'}${wk.objectNummer ? ' · object ' + wk.objectNummer : ''}` : '';
+    const wkBadge = wkLabel ? `<div class="winterklant-badge" title="${escapeAttr(wkTitle)}">❄ ${escapeHtml(wkLabel)}</div>` : '';
+
     if(spot.occupants && spot.occupants.length > 0){
       const t = TYPES[spot.type] || { color:'#7A7A7A', label:'Onbekend' };
       const longStay = spot.occupants.some(o => isLongStay(o.since));
@@ -2935,6 +2970,7 @@
           <div class="spot-sub">${escapeHtml(sub)}</div>
         </div>
         <div class="spot-dim">${spot.length}m</div>
+        ${wkBadge}
       `;
     } else {
       el.className = 'spot empty';
@@ -2942,6 +2978,7 @@
         <div class="spot-del" data-remove-spot="${spot.id}" title="Plek verwijderen">✕</div>
         <span class="plus">+</span>
         ${spot.label ? `<div class="spot-id" style="align-self:flex-start">${escapeHtml(spot.label)}</div>` : ''}
+        ${wkBadge}
       `;
     }
     el.addEventListener('click', (e) => {
@@ -3262,6 +3299,14 @@
           <div class="occ-list" id="occList"></div>
           <button class="btn ghost small" id="addOccBtn">+ Nog een voertuig op deze plek</button>
         </div>
+        <div class="field">
+          <label>Winterklant (optioneel)</label>
+          <div class="sub" style="margin:-2px 0 8px;">Voor als een andere klant deze plek tijdelijk gebruikt tijdens de winter — alleen naam en object nummer, geen apart voertuig nodig.</div>
+          <div style="display:flex;gap:6px;">
+            <input type="text" id="fWinterName" placeholder="Naam winterklant" value="${escapeAttr(spot.winterKlant.name)}" style="flex:2;" />
+            <input type="text" id="fWinterObjNum" placeholder="Object nummer" value="${escapeAttr(spot.winterKlant.objectNummer)}" style="flex:1;" />
+          </div>
+        </div>
       </div>
       <div class="modal-actions">
         ${isEditing ? '<button class="btn danger" id="clearBtn">Plek leegmaken</button>' : ''}
@@ -3369,6 +3414,11 @@
           .map(o => ({ name:o.name.trim(), reg:o.reg.trim(), since:o.since.trim(), notes:o.notes.trim(), away:!!o.away, objectNummer:o.objectNummer.trim(), email:o.email.trim(), phone:o.phone.trim() }))
           .filter(o => o.name || o.reg || o.notes || o.objectNummer || o.email || o.phone);
       }
+
+      spot.winterKlant = {
+        name: document.getElementById('fWinterName').value.trim(),
+        objectNummer: document.getElementById('fWinterObjNum').value.trim(),
+      };
 
       const placedId = pendingPlacementAanvraagId;
       closeModal(); render(); save();
@@ -3891,6 +3941,12 @@
               const hay = [o.name || '', o.reg || '', o.notes || '', o.since || '', o.objectNummer || '', o.email || '', o.phone || ''].join(' ').toLowerCase();
               if(q && hay.includes(q)) results.push({ warehouse: w, spot, sideName, rowIdx, sIdx, tagPrefix, occupant: o });
             });
+            if(spot.winterKlant && (spot.winterKlant.name || spot.winterKlant.objectNummer)){
+              const wkHay = [spot.winterKlant.name || '', spot.winterKlant.objectNummer || ''].join(' ').toLowerCase();
+              if(q && wkHay.includes(q)){
+                results.push({ warehouse: w, spot, sideName, rowIdx, sIdx, tagPrefix, occupant: { name: `❄ Winterklant: ${spot.winterKlant.name || spot.winterKlant.objectNummer}`, reg: '' } });
+              }
+            }
             const bayHay = [spot.label || '', displayTag(spot, tagPrefix)].join(' ').toLowerCase();
             if(q && bayHay.includes(q)) results.push({ warehouse: w, spot, sideName, rowIdx, sIdx, tagPrefix, occupant: null });
           });
