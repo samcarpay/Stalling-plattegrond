@@ -192,6 +192,18 @@
   @media (hover: hover){
     .wh-tab:hover .wh-tab-edit{display:flex;}
   }
+  .wh-tab-move{
+    display:none;
+    width:15px;height:15px;border-radius:50%;
+    align-items:center;justify-content:center;
+    background:rgba(0,0,0,.12);
+    font-size:8px;line-height:1;flex-shrink:0;
+    cursor:pointer;
+  }
+  .wh-tab-move.disabled{opacity:.3;cursor:default;pointer-events:none;}
+  @media (hover: hover){
+    .wh-tab:hover .wh-tab-move{display:flex;}
+  }
   .wh-tab-del{
     display:none;
     width:15px;height:15px;border-radius:50%;
@@ -692,7 +704,7 @@
      click and a fingertip aren't the same kind of "precise".
      ============================================================ */
   @media (hover:none){
-    .wh-tab-edit, .wh-tab-del{
+    .wh-tab-edit, .wh-tab-del, .wh-tab-move{
       display:flex;
       width:20px;height:20px;
     }
@@ -1107,6 +1119,7 @@
   let contractDb = null;
   let showNieuweKlanten = false; // UI-only, not persisted
   let showWinterstalling = false; // UI-only, not persisted
+  let showKlanten = false; // UI-only, not persisted
 
   function initNieuweKlantenSync(){
     if(!hasFirebaseSync || typeof NIEUWE_KLANTEN_ENABLED === 'undefined' || !NIEUWE_KLANTEN_ENABLED || !firebase.firestore) return;
@@ -1526,6 +1539,12 @@
       document.getElementById('legend').innerHTML = '';
       document.getElementById('whPurpose').innerHTML = '';
       renderWinterstallingPage();
+    } else if(showKlanten){
+      document.getElementById('stats').innerHTML = '';
+      document.getElementById('globalStatLine').innerHTML = '';
+      document.getElementById('legend').innerHTML = '';
+      document.getElementById('whPurpose').innerHTML = '';
+      renderKlantenPage();
     } else if(showOverview){
       renderOverviewStats();
       document.getElementById('legend').innerHTML = '';
@@ -1936,6 +1955,155 @@
     return matches;
   }
 
+  // ---------- klanten: master list of every customer, sorted by object nummer ----------
+  function renderKlantenPage(){
+    const wrap = document.getElementById('plan');
+    wrap.innerHTML = '';
+
+    const container = document.createElement('div');
+    container.className = 'overview';
+
+    const rows = [];
+    state.warehouses.forEach(w => {
+      const hasAisle = w.layout !== 'single';
+      const sides = hasAisle ? [['left','L'],['right','R']] : [['left','']];
+      sides.forEach(([key, tagPrefix]) => {
+        w[key].forEach(row => {
+          row.spots.forEach(spot => {
+            if(spot.removed || spot.isDoor) return;
+            (spot.occupants || []).forEach(o => {
+              if(!o.name && !o.reg && !o.objectNummer) return;
+              rows.push({ warehouse: w, spot, tagPrefix, occupant: o });
+            });
+          });
+        });
+      });
+    });
+
+    // Sort by object nummer — numeric-aware where possible (so "A0002" sorts
+    // before "A0010", not after), with entries missing one pushed to the end.
+    rows.sort((a, b) => {
+      const an = a.occupant.objectNummer || '', bn = b.occupant.objectNummer || '';
+      if(!an && !bn) return (a.occupant.name || '').localeCompare(b.occupant.name || '');
+      if(!an) return 1;
+      if(!bn) return -1;
+      return an.localeCompare(bn, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    const toolbarRow = document.createElement('div');
+    toolbarRow.style.cssText = 'display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;justify-content:space-between;';
+    toolbarRow.innerHTML = `<div class="sub" style="margin:0;">${rows.length} klant${rows.length===1?'':'en'}, gesorteerd op object nummer.</div>`;
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn small';
+    addBtn.textContent = '+ Nieuwe klant toevoegen';
+    addBtn.addEventListener('click', () => openAddCustomerSearchModal());
+    toolbarRow.appendChild(addBtn);
+    container.appendChild(toolbarRow);
+
+    if(rows.length === 0){
+      const empty = document.createElement('div');
+      empty.className = 'print-empty';
+      empty.textContent = 'Nog geen klanten ingevoerd.';
+      container.appendChild(empty);
+      wrap.appendChild(container);
+      return;
+    }
+
+    const section = document.createElement('div');
+    section.className = 'overview-section';
+    section.style.maxWidth = '760px';
+
+    rows.forEach(r => {
+      const t = TYPES[r.spot.type] || { color:'#7A7A7A', label:'Onbekend' };
+      const tag = displayTag(r.spot, r.tagPrefix);
+      const o = r.occupant;
+
+      const card = document.createElement('div');
+      card.className = 'agenda-card';
+      card.innerHTML = `
+        <div class="agenda-card-top">
+          <div>
+            <div class="agenda-date"><span class="dot" style="background:${t.color}"></span> ${o.objectNummer ? 'Object ' + escapeHtml(o.objectNummer) : 'Geen object nummer'}</div>
+            <div class="agenda-name">${escapeHtml(o.name || 'Naam onbekend')}${o.reg ? ' · ' + escapeHtml(o.reg) : ''}</div>
+            <div class="agenda-sub">${escapeHtml(r.warehouse.name)} · plek ${escapeHtml(tag)} · ${escapeHtml(t.label)}</div>
+            ${(o.phone || o.email) ? `<div class="agenda-sub">${[o.phone, o.email].filter(Boolean).map(escapeHtml).join(' · ')}</div>` : ''}
+          </div>
+          <div class="agenda-actions"></div>
+        </div>
+      `;
+      const actionsEl = card.querySelector('.agenda-actions');
+      const jumpBtn = document.createElement('button');
+      jumpBtn.className = 'btn ghost small';
+      jumpBtn.textContent = 'Open plek';
+      jumpBtn.addEventListener('click', () => {
+        showKlanten = false;
+        state.activeWarehouseId = r.warehouse.id;
+        render();
+        setTimeout(() => {
+          const el = document.querySelector(`[data-spot-id="${r.spot.id}"]`);
+          if(el) el.scrollIntoView({ behavior:'smooth', inline:'center', block:'center' });
+        }, 60);
+      });
+      actionsEl.appendChild(jumpBtn);
+      section.appendChild(card);
+    });
+
+    container.appendChild(section);
+    wrap.appendChild(container);
+  }
+
+  function openAddCustomerSearchModal(){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal wide';
+    body.innerHTML = `
+      <h3>Nieuwe klant toevoegen</h3>
+      <div class="sub">Zoek een lege plek om de klant in te plaatsen.</div>
+      <div class="field">
+        <label>Zoek lege plekken (pleknaam, loods)</label>
+        <input type="text" id="addCustSearchInput" placeholder="Begin met typen…" />
+      </div>
+      <div id="addCustResults" style="max-height:320px;overflow-y:auto;"></div>
+      <div class="modal-actions"><button class="btn ghost" id="addCustCancelBtn">Annuleren</button></div>
+    `;
+    overlay.classList.add('show');
+    const input = document.getElementById('addCustSearchInput');
+    input.focus();
+
+    function runSearch(){
+      const results = searchEmptyBaysForPlacement(input.value);
+      const resEl = document.getElementById('addCustResults');
+      if(results.length === 0){
+        resEl.innerHTML = `<div class="search-empty">Geen lege plekken gevonden.</div>`;
+        return;
+      }
+      resEl.innerHTML = results.map((r, i) => `
+        <div class="search-result" data-addcust-result="${i}">
+          <div class="search-result-main">
+            <div class="search-result-name">Plek ${escapeHtml(r.tag)}</div>
+            <div class="search-result-meta">${escapeHtml(r.warehouse.name)}</div>
+          </div>
+        </div>
+      `).join('');
+      resEl.querySelectorAll('[data-addcust-result]').forEach(node => {
+        node.addEventListener('click', () => {
+          const r = results[parseInt(node.getAttribute('data-addcust-result'), 10)];
+          body.className = 'modal';
+          closeModal();
+          showKlanten = false;
+          state.activeWarehouseId = r.warehouse.id;
+          render();
+          setTimeout(() => openSpotModal(null, r.spot, null, null, null, r.tagPrefix), 60);
+        });
+      });
+    }
+    input.addEventListener('input', runSearch);
+    runSearch();
+
+    document.getElementById('addCustCancelBtn').addEventListener('click', () => { body.className = 'modal'; closeModal(); });
+    overlay.addEventListener('click', (e) => { if(e.target === overlay){ body.className = 'modal'; closeModal(); } }, { once:true });
+  }
+
   function renderWinterstallingPage(){
     const wrap = document.getElementById('plan');
     wrap.innerHTML = '';
@@ -2009,6 +2177,7 @@
       jumpBtn.textContent = 'Open plek';
       jumpBtn.addEventListener('click', () => {
         showWinterstalling = false;
+        showKlanten = false;
         state.activeWarehouseId = r.warehouse.id;
         render();
         setTimeout(() => {
@@ -2332,6 +2501,7 @@
         showOverview = false;
         showNieuweKlanten = false;
         showWinterstalling = false;
+        showKlanten = false;
         render();
       });
       el.appendChild(agendaTab);
@@ -2346,6 +2516,7 @@
         showOverview = false;
         showAgenda = false;
         showWinterstalling = false;
+        showKlanten = false;
         render();
       });
       el.appendChild(nkTab);
@@ -2362,10 +2533,24 @@
         showOverview = false;
         showAgenda = false;
         showNieuweKlanten = false;
+        showKlanten = false;
         render();
       });
       el.appendChild(winterTab);
     }
+
+    const klantenTab = document.createElement('div');
+    klantenTab.className = 'wh-tab' + (showKlanten ? ' active' : '');
+    klantenTab.innerHTML = `<span class="wh-tab-name-text">👥 Klanten</span>`;
+    klantenTab.addEventListener('click', () => {
+      showKlanten = true;
+      showOverview = false;
+      showAgenda = false;
+      showNieuweKlanten = false;
+      showWinterstalling = false;
+      render();
+    });
+    el.appendChild(klantenTab);
 
     const overviewTab = document.createElement('div');
     overviewTab.className = 'wh-tab' + (showOverview ? ' active' : '');
@@ -2375,27 +2560,33 @@
       showAgenda = false;
       showNieuweKlanten = false;
       showWinterstalling = false;
+      showKlanten = false;
       render();
     });
     el.appendChild(overviewTab);
 
-    state.warehouses.forEach(w => {
+    state.warehouses.forEach((w, whIdx) => {
       const spots = warehouseSpots(w);
       const occ = spots.filter(s => s.occupants && s.occupants.length > 0).length;
       const tab = document.createElement('div');
-      tab.className = 'wh-tab' + (!showOverview && !showAgenda && !showNieuweKlanten && !showWinterstalling && w.id === state.activeWarehouseId ? ' active' : '');
+      tab.className = 'wh-tab' + (!showOverview && !showAgenda && !showNieuweKlanten && !showWinterstalling && !showKlanten && w.id === state.activeWarehouseId ? ' active' : '');
+      const atStart = whIdx === 0;
+      const atEnd = whIdx === state.warehouses.length - 1;
       tab.innerHTML = `
+        <span class="wh-tab-move${atStart ? ' disabled' : ''}" data-move-wh="${w.id}" data-dir="-1" title="Naar links verplaatsen">◀</span>
         <span class="wh-tab-name-text">${escapeHtml(w.name)}</span>
         <span class="wh-count">${occ}/${spots.length}</span>
+        <span class="wh-tab-move${atEnd ? ' disabled' : ''}" data-move-wh="${w.id}" data-dir="1" title="Naar rechts verplaatsen">▶</span>
         <span class="wh-tab-edit" data-edit-wh="${w.id}" title="Loods instellingen">✎</span>
         <span class="wh-tab-del" data-del-wh="${w.id}" title="Loods verwijderen">✕</span>
       `;
       tab.addEventListener('click', (e) => {
-        if(e.target.closest('[data-del-wh]') || e.target.closest('[data-edit-wh]')) return;
+        if(e.target.closest('[data-del-wh]') || e.target.closest('[data-edit-wh]') || e.target.closest('[data-move-wh]')) return;
         showOverview = false;
         showAgenda = false;
         showNieuweKlanten = false;
         showWinterstalling = false;
+        showKlanten = false;
         state.activeWarehouseId = w.id;
         render();
       });
@@ -3404,6 +3595,21 @@
     if(editWhBtn){
       e.stopPropagation();
       openRenameWarehouseModal(editWhBtn.getAttribute('data-edit-wh'));
+      return;
+    }
+    const moveWhBtn = e.target.closest('[data-move-wh]');
+    if(moveWhBtn){
+      e.stopPropagation();
+      const id = moveWhBtn.getAttribute('data-move-wh');
+      const dir = parseInt(moveWhBtn.getAttribute('data-dir'), 10);
+      const idx = state.warehouses.findIndex(w => w.id === id);
+      const swapIdx = idx + dir;
+      if(idx === -1 || swapIdx < 0 || swapIdx >= state.warehouses.length) return;
+      const tmp = state.warehouses[idx];
+      state.warehouses[idx] = state.warehouses[swapIdx];
+      state.warehouses[swapIdx] = tmp;
+      renderTabs();
+      save();
       return;
     }
     const delWhBtn = e.target.closest('[data-del-wh]');
