@@ -821,6 +821,7 @@
       <div class="stats" id="stats"></div>
       <div class="toolbar-actions">
         <button class="btn ghost small" id="backupsBtn">Back-ups</button>
+        <button class="btn ghost small" id="prijslijstBtn">Prijslijst</button>
         <button class="btn ghost small" id="blockedDatesBtn" style="display:none;">Geblokkeerde data</button>
         <button class="btn ghost small" id="printBtn">Afdrukken</button>
         <button class="btn ghost small" id="manageTypesBtn">Typen beheren</button>
@@ -872,11 +873,11 @@
 <script>
 (function(){
   const DEFAULT_TYPES = {
-    car:           { label:'Auto',             length:4.5, color:'#B54834' },
-    campervan:     { label:'Camper',           length:6.0, color:'#2E6E62' },
-    caravan:       { label:'Caravan',          length:7.0, color:'#47598C' },
-    trailer:       { label:'Trailer',          length:5.0, color:'#B4831F' },
-    foldingTrailer:{ label:'Vouwwagen',        length:4.0, color:'#6E5B8C' },
+    car:           { label:'Auto',             length:4.5, color:'#B54834', price:0, period:'jaar' },
+    campervan:     { label:'Camper',           length:6.0, color:'#2E6E62', price:0, period:'jaar' },
+    caravan:       { label:'Caravan',          length:7.0, color:'#47598C', price:0, period:'jaar' },
+    trailer:       { label:'Trailer',          length:5.0, color:'#B4831F', price:0, period:'jaar' },
+    foldingTrailer:{ label:'Vouwwagen',        length:4.0, color:'#6E5B8C', price:0, period:'jaar' },
   };
   // TYPES always points at state.vehicleTypes once state is loaded (see bindTypes()),
   // so edits made through "Manage types" are visible everywhere without extra plumbing.
@@ -952,6 +953,10 @@
     if(!loaded.vehicleTypes || typeof loaded.vehicleTypes !== 'object'){
       loaded.vehicleTypes = JSON.parse(JSON.stringify(DEFAULT_TYPES));
     }
+    Object.values(loaded.vehicleTypes).forEach(t => {
+      if(typeof t.price !== 'number') t.price = 0;
+      if(typeof t.period !== 'string') t.period = 'jaar';
+    });
     loaded.warehouses.forEach(w => {
       // upgrade a pre-side/row save (single "aisles" array) into left/right rows
       if(Array.isArray(w.aisles) && !Array.isArray(w.left)){
@@ -3596,6 +3601,64 @@
     return n;
   }
 
+  function openPrijslijstModal(){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal wide';
+
+    const periodLabels = { maand:'per maand', kwartaal:'per kwartaal', halfjaar:'per halfjaar', jaar:'per jaar' };
+
+    function renderRows(){
+      const keys = Object.keys(TYPES);
+      const listHtml = keys.map(key => {
+        const t = TYPES[key];
+        return `
+          <div class="type-manage-row" data-row="${key}">
+            <span class="swatch" style="background:${t.color};flex-shrink:0;"></span>
+            <span style="flex:1;font-size:12.5px;color:var(--ink);">${escapeHtml(t.label)}</span>
+            <span style="font-size:12px;color:var(--ink-soft);">€</span>
+            <input type="number" class="pl-price" data-key="${key}" value="${t.price || 0}" min="0" step="0.01" style="width:80px;" />
+            <select class="pl-period" data-key="${key}" style="width:110px;">
+              <option value="maand" ${t.period==='maand'?'selected':''}>per maand</option>
+              <option value="kwartaal" ${t.period==='kwartaal'?'selected':''}>per kwartaal</option>
+              <option value="halfjaar" ${t.period==='halfjaar'?'selected':''}>per halfjaar</option>
+              <option value="jaar" ${t.period==='jaar'?'selected':''}>per jaar</option>
+            </select>
+          </div>
+        `;
+      }).join('');
+
+      body.innerHTML = `
+        <h3>Prijslijst</h3>
+        <div class="sub">Prijs per opslagtype — alleen zichtbaar en aan te passen door jou hier in de app, niet zichtbaar voor klanten.</div>
+        <div id="prijslijstList">${listHtml}</div>
+        <div class="modal-actions">
+          <button class="btn" id="donePrijslijstBtn">Klaar</button>
+        </div>
+      `;
+
+      body.querySelectorAll('.pl-price').forEach(inp => {
+        inp.addEventListener('change', () => {
+          const key = inp.getAttribute('data-key');
+          const v = parseFloat(inp.value);
+          TYPES[key].price = (v >= 0) ? v : 0;
+          save();
+        });
+      });
+      body.querySelectorAll('.pl-period').forEach(sel => {
+        sel.addEventListener('change', () => {
+          TYPES[sel.getAttribute('data-key')].period = sel.value;
+          save();
+        });
+      });
+      document.getElementById('donePrijslijstBtn').addEventListener('click', closeModal);
+    }
+
+    renderRows();
+    overlay.classList.add('show');
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
+  }
+
   function openManageTypesModal(){
     const overlay = document.getElementById('overlay');
     const body = document.getElementById('modalBody');
@@ -3681,7 +3744,7 @@
         if(!label){ labelInp.focus(); return; }
         const length = parseFloat(lengthInp.value) || 5;
         const key = slugify(label, Object.keys(TYPES));
-        TYPES[key] = { label, color: colorInp.value, length };
+        TYPES[key] = { label, color: colorInp.value, length, price: 0, period: 'jaar' };
         save();
         renderRows();
       });
@@ -3702,6 +3765,7 @@
 
   document.getElementById('manageTypesBtn').addEventListener('click', openManageTypesModal);
   document.getElementById('backupsBtn').addEventListener('click', openBackupsModal);
+  document.getElementById('prijslijstBtn').addEventListener('click', openPrijslijstModal);
   if(typeof BLOCKED_DATES_PATH !== 'undefined' && BLOCKED_DATES_PATH){
     document.getElementById('blockedDatesBtn').style.display = '';
     document.getElementById('blockedDatesBtn').addEventListener('click', openBlockedDatesModal);
