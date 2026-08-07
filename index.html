@@ -1512,7 +1512,13 @@
   }
 
   function widthFor(length){
-    return Math.max(MIN_W, Math.round(length * PX_PER_M));
+    // All bays render at the same fixed width now, regardless of the
+    // vehicle length stored on them — the length itself is still tracked
+    // and shown on the tile, it just no longer changes the bay's size on
+    // the plan. FIXED_BAY_METERS is the "standard" size every bay is drawn
+    // at; change it here if you ever want a different standard size.
+    const FIXED_BAY_METERS = 5;
+    return Math.max(MIN_W, Math.round(FIXED_BAY_METERS * PX_PER_M));
   }
 
   function activeWarehouse(){
