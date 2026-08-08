@@ -318,6 +318,9 @@
     background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
     padding:10px 12px;margin-bottom:8px;
   }
+  .agenda-card.is-away{
+    background:#eaf5ec;border-color:#bcdccc;
+  }
   .agenda-card-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;}
   .agenda-date{font-family:var(--font-display);font-size:11px;color:var(--ink-soft);}
   .agenda-name{font-weight:700;font-size:13.5px;color:var(--ink);margin-top:2px;}
@@ -485,7 +488,10 @@
     font-size:9px;line-height:1;
     display:flex;align-items:center;justify-content:center;
   }
-  .spot.is-away{opacity:.7;}
+  .spot.is-away{
+    background:#e2f3e6 !important;
+    border-color:#3c8e52 !important;
+  }
   .away-badge{
     position:absolute;top:-7px;right:16px;
     background:var(--ink);color:var(--card);
@@ -1706,6 +1712,86 @@
     return monday;
   }
 
+  function openReturnConfirmModal(info){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal';
+    const tag = displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R'));
+    body.innerHTML = `
+      <h3>Terug gemeld</h3>
+      <div class="sub">Waar staat het voertuig nu? Meestal is dit dezelfde plek — kies "Andere plek" als het ergens anders is neergezet.</div>
+      <div class="modal-actions" style="flex-direction:column;align-items:stretch;gap:8px;">
+        <button class="btn" id="sameBayBtn">Zelfde plek (${escapeHtml(tag)})</button>
+        <button class="btn ghost" id="otherBayBtn">Andere plek…</button>
+        <button class="btn ghost" id="returnCancelBtn">Annuleren</button>
+      </div>
+    `;
+    overlay.classList.add('show');
+    document.getElementById('sameBayBtn').addEventListener('click', () => {
+      info.spot.occupants.forEach(o => { o.away = false; });
+      closeModal();
+      render(); save();
+    });
+    document.getElementById('otherBayBtn').addEventListener('click', () => {
+      closeModal();
+      openMoveReturnedVehicleSearchModal(info);
+    });
+    document.getElementById('returnCancelBtn').addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
+  }
+
+  function openMoveReturnedVehicleSearchModal(info){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal wide';
+    body.innerHTML = `
+      <h3>Nieuwe plek voor het voertuig</h3>
+      <div class="sub">Zoek de plek waar het voertuig nu daadwerkelijk staat.</div>
+      <div class="field">
+        <label>Zoek lege plekken (pleknaam, loods)</label>
+        <input type="text" id="returnSearchInput" placeholder="Begin met typen…" />
+      </div>
+      <div id="returnResults" style="max-height:320px;overflow-y:auto;"></div>
+      <div class="modal-actions"><button class="btn ghost" id="returnSearchCancelBtn">Annuleren</button></div>
+    `;
+    overlay.classList.add('show');
+    const input = document.getElementById('returnSearchInput');
+    input.focus();
+
+    function runSearch(){
+      const results = searchEmptyBaysForPlacement(input.value);
+      const resEl = document.getElementById('returnResults');
+      if(results.length === 0){
+        resEl.innerHTML = `<div class="search-empty">Geen lege plekken gevonden.</div>`;
+        return;
+      }
+      resEl.innerHTML = results.map((r, i) => `
+        <div class="search-result" data-return-result="${i}">
+          <div class="search-result-main">
+            <div class="search-result-name">Plek ${escapeHtml(r.tag)}</div>
+            <div class="search-result-meta">${escapeHtml(r.warehouse.name)}</div>
+          </div>
+        </div>
+      `).join('');
+      resEl.querySelectorAll('[data-return-result]').forEach(node => {
+        node.addEventListener('click', () => {
+          const r = results[parseInt(node.getAttribute('data-return-result'), 10)];
+          const movedOccupants = info.spot.occupants.filter(o => o.away);
+          info.spot.occupants = info.spot.occupants.filter(o => !o.away);
+          movedOccupants.forEach(o => { o.away = false; });
+          r.spot.occupants = (r.spot.occupants || []).concat(movedOccupants);
+          closeModal();
+          render(); save();
+        });
+      });
+    }
+    input.addEventListener('input', runSearch);
+    runSearch();
+
+    document.getElementById('returnSearchCancelBtn').addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
+  }
+
   function findLinkedInfo(linked){
     if(!linked) return null;
     const w = state.warehouses.find(x => x.id === linked.warehouseId);
@@ -1800,7 +1886,12 @@
       if(!weeks[key]) weeks[key] = { monday, items: [] };
       weeks[key].items.push(a);
     });
-    const weekKeys = Object.keys(weeks).sort();
+    let weekKeys = Object.keys(weeks).sort();
+    const currentWeekKey = getWeekStart(new Date().toISOString().slice(0,10));
+    const currentWeekKeyStr = currentWeekKey ? currentWeekKey.toISOString().slice(0,10) : null;
+    if(currentWeekKeyStr && weekKeys.includes(currentWeekKeyStr)){
+      weekKeys = [currentWeekKeyStr, ...weekKeys.filter(k => k !== currentWeekKeyStr)];
+    }
 
     weekKeys.forEach(key => {
       const wk = weeks[key];
@@ -1815,9 +1906,9 @@
       wk.items.forEach(a => {
         const info = findLinkedInfo(a.linked);
         const suggestion = !info ? findObjectNummerMatch(a) : null;
-        const card = document.createElement('div');
-        card.className = 'agenda-card';
         const away = info && info.spot.occupants && info.spot.occupants.some(o => o.away);
+        const card = document.createElement('div');
+        card.className = 'agenda-card' + (away ? ' is-away' : '');
         card.innerHTML = `
           <div class="agenda-card-top">
             <div>
@@ -1843,8 +1934,12 @@
           awayBtn.className = 'btn ghost small';
           awayBtn.textContent = away ? 'Terug gemeld' : 'Markeer als weg';
           awayBtn.addEventListener('click', () => {
-            info.spot.occupants.forEach(o => { o.away = !away; });
-            render(); save();
+            if(away){
+              openReturnConfirmModal(info);
+            } else {
+              info.spot.occupants.forEach(o => { o.away = true; });
+              render(); save();
+            }
           });
           actionsEl.appendChild(awayBtn);
         } else {
