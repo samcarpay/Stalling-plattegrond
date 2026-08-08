@@ -848,6 +848,7 @@
   </div>
 
   <div class="wh-tabs" id="whTabs"></div>
+  <div class="wh-tabs" id="whTabsWarehouses" style="margin-top:6px;"></div>
   <div class="global-stat-line" id="globalStatLine"></div>
   <div class="wh-purpose" id="whPurpose"></div>
 
@@ -2741,6 +2742,9 @@
     });
     el.appendChild(overviewTab);
 
+    const whEl = document.getElementById('whTabsWarehouses');
+    whEl.innerHTML = '';
+
     state.warehouses.forEach((w, whIdx) => {
       const spots = warehouseSpots(w);
       const occ = spots.filter(s => s.occupants && s.occupants.length > 0).length;
@@ -2766,14 +2770,14 @@
         state.activeWarehouseId = w.id;
         render();
       });
-      el.appendChild(tab);
+      whEl.appendChild(tab);
     });
     const addBtn = document.createElement('button');
     addBtn.className = 'wh-tab-add';
     addBtn.id = 'addWarehouseBtn';
     addBtn.textContent = '+';
     addBtn.title = 'Loods toevoegen';
-    el.appendChild(addBtn);
+    whEl.appendChild(addBtn);
   }
 
   function openRenameWarehouseModal(warehouseId){
