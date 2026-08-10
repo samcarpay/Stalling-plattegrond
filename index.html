@@ -3873,6 +3873,13 @@
         <div class="sub">Prijs per opslagtype — alleen zichtbaar en aan te passen door jou hier in de app, niet zichtbaar voor klanten.</div>
         <div id="prijslijstList">${listHtml}</div>
 
+        <div class="add-type-row" style="margin-top:10px;">
+          <input type="color" id="plNewTypeColor" value="#5B7A8C" />
+          <input type="text" class="tm-label" id="plNewTypeLabel" placeholder="bijv. Boottrailer" style="flex:1;" />
+          <input type="number" class="tm-length" id="plNewTypeLength" placeholder="5" min="1" max="20" step="0.1" title="Standaardlengte (m)" />
+          <button class="btn small" id="plAddTypeBtn">+ Nieuw type</button>
+        </div>
+
         <div class="field" style="border:1px solid var(--line);border-radius:var(--radius);padding:10px;background:var(--paper);margin-top:14px;">
           <label style="margin-bottom:8px;">Rekenhulp — lengte × prijs per meter</label>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -3889,6 +3896,19 @@
           <button class="btn" id="donePrijslijstBtn">Klaar</button>
         </div>
       `;
+
+      document.getElementById('plAddTypeBtn').addEventListener('click', () => {
+        const labelInp = document.getElementById('plNewTypeLabel');
+        const colorInp = document.getElementById('plNewTypeColor');
+        const lengthInp = document.getElementById('plNewTypeLength');
+        const label = labelInp.value.trim();
+        if(!label){ labelInp.focus(); return; }
+        const length = parseFloat(lengthInp.value) || 5;
+        const key = slugify(label, Object.keys(TYPES));
+        TYPES[key] = { label, color: colorInp.value, length, price: 0, period: 'jaar' };
+        save();
+        renderRows();
+      });
 
       function updateCalc(){
         const len = parseFloat(document.getElementById('calcLength').value) || 0;
