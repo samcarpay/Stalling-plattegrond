@@ -639,6 +639,12 @@
     display:flex;align-items:center;justify-content:center;
   }
   .occ-remove:hover{border-color:var(--car);color:var(--car);}
+  .occ-move{
+    flex-shrink:0;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);
+    background:transparent;color:var(--ink-soft);font-size:11px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .occ-move:hover{border-color:var(--ink);color:var(--ink);}
 
   .status-line{font-size:11px;color:var(--ink-faint);text-align:center;margin-top:14px;font-family:var(--font-display);}
 
@@ -945,7 +951,7 @@
   }
 
   function spotDefault(type, seq){
-    return { id: uid(), type, length: TYPES[type].length, occupants: [], seq, removed: false, isDoor: false, winterKlant: { name:'', objectNummer:'' } };
+    return { id: uid(), type, length: TYPES[type].length, occupants: [], seq, removed: false, isDoor: false, winterKlant: { name:'', objectNummer:'', price:'', betaald:false } };
   }
   function nextSeqFor(row){
     return row.spots.reduce((max, s) => Math.max(max, s.seq || 0), 0) + 1;
@@ -982,10 +988,12 @@
           if(typeof s.removed !== 'boolean') s.removed = false;
           if(typeof s.isDoor !== 'boolean') s.isDoor = false;
           if(!s.winterKlant || typeof s.winterKlant !== 'object'){
-            s.winterKlant = { name:'', objectNummer:'' };
+            s.winterKlant = { name:'', objectNummer:'', price:'', betaald:false };
           } else {
             if(typeof s.winterKlant.name !== 'string') s.winterKlant.name = '';
             if(typeof s.winterKlant.objectNummer !== 'string') s.winterKlant.objectNummer = '';
+            if(typeof s.winterKlant.price !== 'string' && typeof s.winterKlant.price !== 'number') s.winterKlant.price = '';
+            if(typeof s.winterKlant.betaald !== 'boolean') s.winterKlant.betaald = false;
           }
           if(!Array.isArray(s.occupants)){
             s.occupants = s.occupant ? [s.occupant] : [];
@@ -1741,15 +1749,74 @@
     overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
   }
 
+  // Moves just ONE occupant out of a bay that holds several — for a bay
+  // with e.g. 12 different customers, drag-and-swap would move all 12 at
+  // once, which is almost never what's actually wanted. This searches for
+  // an empty destination bay and moves only the one occupant there,
+  // leaving everyone else in the original bay untouched.
+  function openMoveOneOccupantSearchModal(sourceSpot, occIdx){
+    const occupant = sourceSpot.occupants[occIdx];
+    if(!occupant) return;
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal wide';
+    body.innerHTML = `
+      <h3>Verplaats ${escapeHtml(occupant.name || 'dit voertuig')}</h3>
+      <div class="sub">Zoek de plek waar alleen dit voertuig naartoe moet. De rest van de huidige plek blijft ongewijzigd.</div>
+      <div class="field">
+        <label>Zoek lege plekken (pleknaam, loods)</label>
+        <input type="text" id="moveOccSearchInput" placeholder="Begin met typen…" />
+      </div>
+      <div id="moveOccResults" style="max-height:320px;overflow-y:auto;"></div>
+      <div class="modal-actions"><button class="btn ghost" id="moveOccCancelBtn">Annuleren</button></div>
+    `;
+    overlay.classList.add('show');
+    const input = document.getElementById('moveOccSearchInput');
+    input.focus();
+
+    function runSearch(){
+      const results = searchEmptyBaysForPlacement(input.value);
+      const resEl = document.getElementById('moveOccResults');
+      if(results.length === 0){
+        resEl.innerHTML = `<div class="search-empty">Geen lege plekken gevonden.</div>`;
+        return;
+      }
+      resEl.innerHTML = results.map((r, i) => `
+        <div class="search-result" data-move-occ-result="${i}">
+          <div class="search-result-main">
+            <div class="search-result-name">Plek ${escapeHtml(r.tag)}</div>
+            <div class="search-result-meta">${escapeHtml(r.warehouse.name)}</div>
+          </div>
+        </div>
+      `).join('');
+      resEl.querySelectorAll('[data-move-occ-result]').forEach(node => {
+        node.addEventListener('click', () => {
+          const r = results[parseInt(node.getAttribute('data-move-occ-result'), 10)];
+          const idx = sourceSpot.occupants.indexOf(occupant);
+          if(idx === -1){ closeModal(); return; }
+          sourceSpot.occupants.splice(idx, 1);
+          r.spot.occupants = (r.spot.occupants || []).concat([occupant]);
+          closeModal();
+          render(); save();
+        });
+      });
+    }
+    input.addEventListener('input', runSearch);
+    runSearch();
+
+    document.getElementById('moveOccCancelBtn').addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
+  }
+
   function openMoveReturnedVehicleSearchModal(info){
     const overlay = document.getElementById('overlay');
     const body = document.getElementById('modalBody');
     body.className = 'modal wide';
     body.innerHTML = `
       <h3>Nieuwe plek voor het voertuig</h3>
-      <div class="sub">Zoek de plek waar het voertuig nu daadwerkelijk staat.</div>
+      <div class="sub">Zoek de plek waar het voertuig nu daadwerkelijk staat — ook plekken van klanten die zelf momenteel weg zijn worden getoond.</div>
       <div class="field">
-        <label>Zoek lege plekken (pleknaam, loods)</label>
+        <label>Zoek plekken (pleknaam, loods)</label>
         <input type="text" id="returnSearchInput" placeholder="Begin met typen…" />
       </div>
       <div id="returnResults" style="max-height:320px;overflow-y:auto;"></div>
@@ -1760,17 +1827,17 @@
     input.focus();
 
     function runSearch(){
-      const results = searchEmptyBaysForPlacement(input.value);
+      const results = searchAvailableBaysForReturn(input.value);
       const resEl = document.getElementById('returnResults');
       if(results.length === 0){
-        resEl.innerHTML = `<div class="search-empty">Geen lege plekken gevonden.</div>`;
+        resEl.innerHTML = `<div class="search-empty">Geen beschikbare plekken gevonden.</div>`;
         return;
       }
       resEl.innerHTML = results.map((r, i) => `
         <div class="search-result" data-return-result="${i}">
           <div class="search-result-main">
             <div class="search-result-name">Plek ${escapeHtml(r.tag)}</div>
-            <div class="search-result-meta">${escapeHtml(r.warehouse.name)}</div>
+            <div class="search-result-meta">${escapeHtml(r.warehouse.name)}${r.awayNames ? ` · momenteel weg: ${escapeHtml(r.awayNames)}` : ''}</div>
           </div>
         </div>
       `).join('');
@@ -2109,6 +2176,8 @@
                 warehouse: w, spot, tagPrefix,
                 occupant: { name: spot.winterKlant.name, objectNummer: spot.winterKlant.objectNummer, reg:'', phone:'', email:'' },
                 isWinterKlant: true,
+                winterPrice: spot.winterKlant.price,
+                winterBetaald: spot.winterKlant.betaald,
               });
             }
           });
@@ -2184,6 +2253,7 @@
               <div class="agenda-name">${escapeHtml(o.name || 'Naam onbekend')}${o.reg ? ' · ' + escapeHtml(o.reg) : ''}</div>
               <div class="agenda-sub">${escapeHtml(r.warehouse.name)} · plek ${escapeHtml(tag)}${r.isWinterKlant ? ' (tijdelijk, over de winter)' : ' · ' + escapeHtml(t.label)}</div>
               ${(o.phone || o.email) ? `<div class="agenda-sub">${[o.phone, o.email].filter(Boolean).map(escapeHtml).join(' · ')}</div>` : ''}
+              ${r.isWinterKlant && r.winterPrice ? `<div class="agenda-sub">€ ${escapeHtml(String(r.winterPrice))} · ${r.winterBetaald ? 'betaald' : 'nog niet betaald'}</div>` : ''}
             </div>
             <div class="agenda-actions"></div>
           </div>
@@ -2438,6 +2508,39 @@
             const hay = [spot.label || '', tag, w.name].join(' ').toLowerCase();
             if(!q || hay.includes(q)){
               results.push({ warehouse: w, spot, tagPrefix, tag });
+            }
+          });
+        });
+      });
+    });
+    return results.slice(0, 30);
+  }
+
+  // Same as above, but also includes bays that aren't empty — as long as
+  // EVERY occupant currently there is marked away, meaning the physical
+  // space is genuinely free right now even though it's still "someone's"
+  // bay on paper. Only used for the "terug gemeld" flow, since placing a
+  // brand new customer into an away customer's bay wouldn't make sense —
+  // this is specifically for a vehicle that's coming back and can share
+  // the space with whoever's currently away from it.
+  function searchAvailableBaysForReturn(query){
+    const q = query.trim().toLowerCase();
+    const results = [];
+    state.warehouses.forEach(w => {
+      const hasAisle = w.layout !== 'single';
+      const sides = hasAisle ? [['left','L'],['right','R']] : [['left','']];
+      sides.forEach(([key, tagPrefix]) => {
+        w[key].forEach(row => {
+          row.spots.forEach(spot => {
+            if(spot.removed || spot.isDoor) return;
+            const isEmpty = !spot.occupants || spot.occupants.length === 0;
+            const allAway = !isEmpty && spot.occupants.every(o => o.away);
+            if(!isEmpty && !allAway) return;
+            const tag = displayTag(spot, tagPrefix);
+            const hay = [spot.label || '', tag, w.name].join(' ').toLowerCase();
+            if(!q || hay.includes(q)){
+              const awayNames = allAway ? spot.occupants.map(o => o.name || 'Naam onbekend').join(', ') : null;
+              results.push({ warehouse: w, spot, tagPrefix, tag, awayNames });
             }
           });
         });
@@ -3148,7 +3251,7 @@
 
     const wk = spot.winterKlant;
     const wkLabel = wk && (wk.name || wk.objectNummer) ? (wk.name || wk.objectNummer) : null;
-    const wkTitle = wk ? `Winterklant: ${wk.name || '(geen naam)'}${wk.objectNummer ? ' · object ' + wk.objectNummer : ''}` : '';
+    const wkTitle = wk ? `Winterklant: ${wk.name || '(geen naam)'}${wk.objectNummer ? ' · object ' + wk.objectNummer : ''}${wk.price ? ' · € ' + wk.price : ''}${wk.name || wk.objectNummer ? (wk.betaald ? ' · betaald' : ' · nog niet betaald') : ''}` : '';
     const wkBadge = wkLabel ? `<div class="winterklant-badge" title="${escapeAttr(wkTitle)}">❄ ${escapeHtml(wkLabel)}</div>` : '';
 
     if(spot.occupants && spot.occupants.length > 0){
@@ -3508,9 +3611,16 @@
         <div class="field">
           <label>Winterklant (optioneel)</label>
           <div class="sub" style="margin:-2px 0 8px;">Voor als een andere klant deze plek tijdelijk gebruikt tijdens de winter — alleen naam en object nummer, geen apart voertuig nodig.</div>
-          <div style="display:flex;gap:6px;">
+          <div style="display:flex;gap:6px;margin-bottom:6px;">
             <input type="text" id="fWinterName" placeholder="Naam winterklant" value="${escapeAttr(spot.winterKlant.name)}" style="flex:2;" />
             <input type="text" id="fWinterObjNum" placeholder="Object nummer" value="${escapeAttr(spot.winterKlant.objectNummer)}" style="flex:1;" />
+          </div>
+          <div style="display:flex;gap:6px;">
+            <input type="number" id="fWinterPrice" placeholder="Prijs (€)" min="0" step="0.01" value="${escapeAttr(spot.winterKlant.price)}" style="flex:1;" />
+            <select id="fWinterBetaald" style="flex:1;">
+              <option value="nee" ${!spot.winterKlant.betaald ? 'selected' : ''}>Betaald: Nee</option>
+              <option value="ja" ${spot.winterKlant.betaald ? 'selected' : ''}>Betaald: Ja</option>
+            </select>
           </div>
         </div>
       </div>
@@ -3524,12 +3634,14 @@
 
     function renderOccList(){
       const listEl = document.getElementById('occList');
+      const showMoveBtn = occDraft.length > 1;
       listEl.innerHTML = occDraft.map((o, idx) => `
         <div class="occ-row" data-occ-idx="${idx}">
           <div class="occ-row-top">
             <input type="text" class="occ-name" placeholder="Naam eigenaar / klant" value="${escapeAttr(o.name)}" />
             <input type="text" class="occ-reg" placeholder="Kenteken" value="${escapeAttr(o.reg)}" />
             <input type="date" class="occ-since" value="${escapeAttr(o.since)}" title="Gestald sinds" />
+            ${showMoveBtn ? `<button class="occ-move" data-move-occ="${idx}" title="Alleen dit voertuig naar een andere plek verplaatsen">➜</button>` : ''}
             <button class="occ-remove" data-remove-occ="${idx}" title="Dit voertuig verwijderen">✕</button>
           </div>
           <div class="occ-row-contact">
@@ -3556,6 +3668,20 @@
           if(occDraft.length === 0) occDraft.push({ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'', email:'', phone:'' });
           renderOccList();
         });
+        const moveBtn = rowEl.querySelector('.occ-move');
+        if(moveBtn){
+          moveBtn.addEventListener('click', () => {
+            // Saves the whole bay first (including this move-button's own
+            // row), so nothing else typed in this modal gets lost, then
+            // opens a search to pick where this one vehicle actually goes.
+            document.getElementById('saveBtn').click();
+            const errorEl = document.getElementById('spotSaveError');
+            if(errorEl && errorEl.style.display === 'block'){
+              return; // save was blocked (e.g. duplicate object nummer) — let that error stand
+            }
+            openMoveOneOccupantSearchModal(spot, idx);
+          });
+        }
       });
     }
     renderOccList();
@@ -3661,6 +3787,8 @@
       spot.winterKlant = {
         name: document.getElementById('fWinterName').value.trim(),
         objectNummer: document.getElementById('fWinterObjNum').value.trim(),
+        price: document.getElementById('fWinterPrice').value.trim(),
+        betaald: document.getElementById('fWinterBetaald').value === 'ja',
       };
 
       const placedId = pendingPlacementAanvraagId;
