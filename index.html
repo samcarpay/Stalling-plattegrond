@@ -2540,13 +2540,17 @@
             const hay = [spot.label || '', tag, w.name].join(' ').toLowerCase();
             if(!q || hay.includes(q)){
               const awayNames = allAway ? spot.occupants.map(o => o.name || 'Naam onbekend').join(', ') : null;
-              results.push({ warehouse: w, spot, tagPrefix, tag, awayNames });
+              results.push({ warehouse: w, spot, tagPrefix, tag, awayNames, isEmpty });
             }
           });
         });
       });
     });
-    return results.slice(0, 30);
+    // Truly empty bays first — with a lot of "away" bays in the mix, a
+    // fixed result cap could otherwise fill up entirely with those before
+    // ever reaching an empty one, hiding the more common choice.
+    results.sort((a, b) => (a.isEmpty === b.isEmpty) ? 0 : (a.isEmpty ? -1 : 1));
+    return results.slice(0, 60);
   }
 
   function guessTypeKeyFor(categorie){
