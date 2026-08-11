@@ -325,13 +325,6 @@
   .agenda-date{font-family:var(--font-display);font-size:11px;color:var(--ink-soft);}
   .agenda-name{font-weight:700;font-size:13.5px;color:var(--ink);margin-top:2px;}
   .agenda-sub{font-size:11.5px;color:var(--ink-soft);margin-top:1px;}
-  .agenda-daypicker{display:flex;gap:3px;margin-top:6px;}
-  .agenda-day-btn{
-    flex:1;padding:3px 0;border:1px solid var(--line);border-radius:4px;background:var(--card);
-    color:var(--ink-soft);font-size:10px;font-family:var(--font-display);cursor:pointer;
-  }
-  .agenda-day-btn:hover{border-color:var(--ink);}
-  .agenda-day-btn.active{background:var(--ink);border-color:var(--ink);color:var(--card);font-weight:700;}
   .agenda-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;}
   .agenda-link{font-size:11.5px;color:var(--ink-soft);margin-top:8px;padding-top:8px;border-top:1px dashed var(--paper-line);}
 
@@ -865,9 +858,9 @@
   <div class="global-stat-line" id="globalStatLine"></div>
   <div class="wh-purpose" id="whPurpose"></div>
 
-  <div class="legend" id="legend"></div>
-
   <div id="plan"></div>
+
+  <div class="legend" id="legend"></div>
 
   <div class="status-line" id="statusLine">laden…</div>
   <div class="status-line" id="lockLine" style="display:none;"><a href="#" id="lockLink" style="color:inherit;">🔒 Vergrendelen</a></div>
@@ -1994,13 +1987,6 @@
         const card = document.createElement('div');
         card.className = 'agenda-card' + (away ? ' is-away' : '');
 
-        const dayLabels = ['Ma','Di','Wo','Do','Vr','Za','Zo'];
-        const weekDates = dayLabels.map((_, i) => {
-          const d = new Date(wk.monday);
-          d.setDate(d.getDate() + i);
-          return d.toISOString().slice(0,10);
-        });
-
         card.innerHTML = `
           <div class="agenda-card-top">
             <div>
@@ -2008,9 +1994,6 @@
               <div class="agenda-name">${escapeHtml(a.name || 'Naam onbekend')}</div>
               <div class="agenda-sub">${escapeHtml(a.vehicleDesc || '')}${a.contact ? ' · ' + escapeHtml(a.contact) : ''}</div>
               ${a.notes ? `<div class="agenda-sub">${escapeHtml(a.notes)}</div>` : ''}
-              <div class="agenda-daypicker">
-                ${dayLabels.map((label, i) => `<button class="agenda-day-btn${weekDates[i]===a.date ? ' active' : ''}" data-set-date="${weekDates[i]}">${label}</button>`).join('')}
-              </div>
             </div>
             <div class="agenda-actions"></div>
           </div>
@@ -2023,13 +2006,6 @@
             }
           </div>
         `;
-        card.querySelectorAll('[data-set-date]').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const newDate = btn.getAttribute('data-set-date');
-            if(newDate === a.date) return;
-            if(appointmentsRef) appointmentsRef.child(a.id).update({ date: newDate });
-          });
-        });
         const actionsEl = card.querySelector('.agenda-actions');
         if(info){
           const awayBtn = document.createElement('button');
