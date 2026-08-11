@@ -3054,10 +3054,22 @@
     return `${sideName} · rij ${idx+1} (achter)`;
   }
 
+  let lastPlanWarehouseId = null; // tracks which warehouse the current scroll position belongs to
+
   function renderPlan(){
     const wrap = document.getElementById('plan');
+    const activeWh = activeWarehouse();
+    const existingScroller = wrap.querySelector('.plan-scroll');
+    // Only carry the scroll position over if we're re-rendering the SAME
+    // warehouse (e.g. after saving a bay) — switching to a different
+    // warehouse should still start scrolled to the left, same as before.
+    const preserveScrollLeft = (existingScroller && activeWh && lastPlanWarehouseId === activeWh.id)
+      ? existingScroller.scrollLeft
+      : 0;
+    lastPlanWarehouseId = activeWh ? activeWh.id : null;
+
     wrap.innerHTML = '';
-    const w = activeWarehouse();
+    const w = activeWh;
     if(!w) return;
     const hasAisle = w.layout !== 'single';
 
@@ -3095,6 +3107,9 @@
 
     scroller.appendChild(plan);
     wrap.appendChild(scroller);
+    if(preserveScrollLeft > 0){
+      scroller.scrollLeft = preserveScrollLeft;
+    }
   }
 
   function renderRowBlock(row, sideName, idx, sideCount, sideKey, tagPrefix, hasAisle){
