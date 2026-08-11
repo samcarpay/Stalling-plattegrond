@@ -325,6 +325,13 @@
   .agenda-date{font-family:var(--font-display);font-size:11px;color:var(--ink-soft);}
   .agenda-name{font-weight:700;font-size:13.5px;color:var(--ink);margin-top:2px;}
   .agenda-sub{font-size:11.5px;color:var(--ink-soft);margin-top:1px;}
+  .agenda-daypicker{display:flex;gap:3px;margin-top:6px;}
+  .agenda-day-btn{
+    flex:1;padding:3px 0;border:1px solid var(--line);border-radius:4px;background:var(--card);
+    color:var(--ink-soft);font-size:10px;font-family:var(--font-display);cursor:pointer;
+  }
+  .agenda-day-btn:hover{border-color:var(--ink);}
+  .agenda-day-btn.active{background:var(--ink);border-color:var(--ink);color:var(--card);font-weight:700;}
   .agenda-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;}
   .agenda-link{font-size:11.5px;color:var(--ink-soft);margin-top:8px;padding-top:8px;border-top:1px dashed var(--paper-line);}
 
@@ -1711,6 +1718,15 @@
   }
 
   // ---------- agenda page ----------
+  const DUTCH_DAY_NAMES = ['Zondag','Maandag','Dinsdag','Woensdag','Donderdag','Vrijdag','Zaterdag'];
+  const DUTCH_MONTH_NAMES = ['januari','februari','maart','april','mei','juni','juli','augustus','september','oktober','november','december'];
+  function formatDutchDate(dateStr){
+    if(!dateStr) return '';
+    const d = new Date(dateStr + 'T00:00:00');
+    if(isNaN(d.getTime())) return dateStr;
+    return `${DUTCH_DAY_NAMES[d.getDay()]} ${d.getDate()} ${DUTCH_MONTH_NAMES[d.getMonth()]}`;
+  }
+
   function getWeekStart(dateStr){
     const d = new Date(dateStr + 'T00:00:00');
     if(isNaN(d.getTime())) return null;
@@ -1762,9 +1778,9 @@
     body.className = 'modal wide';
     body.innerHTML = `
       <h3>Verplaats ${escapeHtml(occupant.name || 'dit voertuig')}</h3>
-      <div class="sub">Zoek de plek waar alleen dit voertuig naartoe moet. De rest van de huidige plek blijft ongewijzigd.</div>
+      <div class="sub">Zoek de plek waar alleen dit voertuig naartoe moet — ook plekken van klanten die zelf momenteel weg zijn worden getoond. De rest van de huidige plek blijft ongewijzigd.</div>
       <div class="field">
-        <label>Zoek lege plekken (pleknaam, loods)</label>
+        <label>Zoek plekken (pleknaam, loods)</label>
         <input type="text" id="moveOccSearchInput" placeholder="Begin met typen…" />
       </div>
       <div id="moveOccResults" style="max-height:320px;overflow-y:auto;"></div>
@@ -1775,17 +1791,17 @@
     input.focus();
 
     function runSearch(){
-      const results = searchEmptyBaysForPlacement(input.value);
+      const results = searchAvailableBaysForReturn(input.value);
       const resEl = document.getElementById('moveOccResults');
       if(results.length === 0){
-        resEl.innerHTML = `<div class="search-empty">Geen lege plekken gevonden.</div>`;
+        resEl.innerHTML = `<div class="search-empty">Geen beschikbare plekken gevonden.</div>`;
         return;
       }
       resEl.innerHTML = results.map((r, i) => `
         <div class="search-result" data-move-occ-result="${i}">
           <div class="search-result-main">
             <div class="search-result-name">Plek ${escapeHtml(r.tag)}</div>
-            <div class="search-result-meta">${escapeHtml(r.warehouse.name)}</div>
+            <div class="search-result-meta">${escapeHtml(r.warehouse.name)}${r.awayNames ? ` · momenteel weg: ${escapeHtml(r.awayNames)}` : ''}</div>
           </div>
         </div>
       `).join('');
@@ -1977,13 +1993,24 @@
         const away = info && info.spot.occupants && info.spot.occupants.some(o => o.away);
         const card = document.createElement('div');
         card.className = 'agenda-card' + (away ? ' is-away' : '');
+
+        const dayLabels = ['Ma','Di','Wo','Do','Vr','Za','Zo'];
+        const weekDates = dayLabels.map((_, i) => {
+          const d = new Date(wk.monday);
+          d.setDate(d.getDate() + i);
+          return d.toISOString().slice(0,10);
+        });
+
         card.innerHTML = `
           <div class="agenda-card-top">
             <div>
-              <div class="agenda-date">${escapeHtml(a.date || '(geen datum opgegeven)')}</div>
+              <div class="agenda-date">${a.date ? escapeHtml(formatDutchDate(a.date)) : '(geen datum opgegeven)'}</div>
               <div class="agenda-name">${escapeHtml(a.name || 'Naam onbekend')}</div>
               <div class="agenda-sub">${escapeHtml(a.vehicleDesc || '')}${a.contact ? ' · ' + escapeHtml(a.contact) : ''}</div>
               ${a.notes ? `<div class="agenda-sub">${escapeHtml(a.notes)}</div>` : ''}
+              <div class="agenda-daypicker">
+                ${dayLabels.map((label, i) => `<button class="agenda-day-btn${weekDates[i]===a.date ? ' active' : ''}" data-set-date="${weekDates[i]}">${label}</button>`).join('')}
+              </div>
             </div>
             <div class="agenda-actions"></div>
           </div>
@@ -1996,6 +2023,13 @@
             }
           </div>
         `;
+        card.querySelectorAll('[data-set-date]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const newDate = btn.getAttribute('data-set-date');
+            if(newDate === a.date) return;
+            if(appointmentsRef) appointmentsRef.child(a.id).update({ date: newDate });
+          });
+        });
         const actionsEl = card.querySelector('.agenda-actions');
         if(info){
           const awayBtn = document.createElement('button');
@@ -2075,7 +2109,7 @@
         card.innerHTML = `
           <div class="agenda-card-top">
             <div>
-              <div class="agenda-date">${escapeHtml(a.date || '')}${a.completedAt ? ' · afgerond op ' + new Date(a.completedAt).toLocaleDateString() : ''}</div>
+              <div class="agenda-date">${a.date ? escapeHtml(formatDutchDate(a.date)) : ''}${a.completedAt ? ' · afgerond op ' + new Date(a.completedAt).toLocaleDateString() : ''}</div>
               <div class="agenda-name">${escapeHtml(a.name || 'Naam onbekend')}</div>
               <div class="agenda-sub">${escapeHtml(a.vehicleDesc || '')}${a.contact ? ' · ' + escapeHtml(a.contact) : ''}</div>
             </div>
@@ -3577,8 +3611,8 @@
     const auto = autoTag(tagPrefix, spot.seq);
 
     let occDraft = (spot.occupants && spot.occupants.length)
-      ? spot.occupants.map(o => ({ name:o.name||'', reg:o.reg||'', since:o.since||'', notes:o.notes||'', away:!!o.away, objectNummer:o.objectNummer||'', email:o.email||'', phone:o.phone||'' }))
-      : [{ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'', email:'', phone:'', ...(prefillOccupant || {}) }];
+      ? spot.occupants.map(o => ({ name:o.name||'', reg:o.reg||'', since:o.since||'', notes:o.notes||'', away:!!o.away, objectNummer:o.objectNummer||'', email:o.email||'', phone:o.phone||'', _wasAway:!!o.away }))
+      : [{ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'', email:'', phone:'', _wasAway:false, ...(prefillOccupant || {}) }];
 
     body.innerHTML = `
       <h3>${isEditing ? 'Plek bewerken' : 'Plek toevoegen / bewerken'}</h3>
@@ -3669,7 +3703,7 @@
         rowEl.querySelector('.occ-away').addEventListener('change', (e) => { occDraft[idx].away = e.target.checked; });
         rowEl.querySelector('.occ-remove').addEventListener('click', () => {
           occDraft.splice(idx, 1);
-          if(occDraft.length === 0) occDraft.push({ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'', email:'', phone:'' });
+          if(occDraft.length === 0) occDraft.push({ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'', email:'', phone:'', _wasAway:false });
           renderOccList();
         });
         const moveBtn = rowEl.querySelector('.occ-move');
@@ -3691,7 +3725,7 @@
     renderOccList();
 
     document.getElementById('addOccBtn').addEventListener('click', () => {
-      occDraft.push({ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'', email:'', phone:'' });
+      occDraft.push({ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'', email:'', phone:'', _wasAway:false });
       renderOccList();
     });
 
@@ -3786,6 +3820,28 @@
         spot.occupants = occDraft
           .map(o => ({ name:o.name.trim(), reg:o.reg.trim(), since:o.since.trim(), notes:o.notes.trim(), away:!!o.away, objectNummer:o.objectNummer.trim(), email:o.email.trim(), phone:o.phone.trim() }))
           .filter(o => o.name || o.reg || o.notes || o.objectNummer || o.email || o.phone);
+
+        // Anyone newly checked "away" right here (not via an existing
+        // Agenda request) gets their own Agenda entry automatically, on
+        // today's date, already linked to this bay — so "terug gemeld"
+        // works the same way no matter how someone became away.
+        if(appointmentsRef){
+          const activeWh = activeWarehouse();
+          occDraft.forEach(o => {
+            if(o.away && !o._wasAway && (o.name.trim() || o.objectNummer.trim())){
+              appointmentsRef.push({
+                name: o.name.trim() || '(geen naam)',
+                contact: o.phone.trim() || o.email.trim() || '',
+                vehicleDesc: o.objectNummer.trim() || '',
+                date: new Date().toISOString().slice(0,10),
+                notes: 'Automatisch aangemaakt: handmatig als weg gemarkeerd.',
+                createdAt: Date.now(),
+                linked: activeWh ? { warehouseId: activeWh.id, spotId: spot.id } : null,
+                status: 'requested',
+              });
+            }
+          });
+        }
       }
 
       spot.winterKlant = {
