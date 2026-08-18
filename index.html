@@ -2109,24 +2109,14 @@
         return;
       }
 
-      // ---- currently-away summary — always visible, no scrolling needed ----
+      // Currently-away customers — computed now, but rendered after the
+      // week list below, since upcoming pickups matter more at a glance.
       const awayList = active.filter(a => {
         const info = findLinkedInfo(a.linked);
         if(!info) return false;
         const matchedOcc = findMatchingOccupant(info.spot, a);
         return matchedOcc && matchedOcc.away;
       });
-      if(awayList.length > 0){
-        const awaySection = document.createElement('div');
-        awaySection.className = 'overview-section';
-        awaySection.style.maxWidth = '640px';
-        awaySection.innerHTML = `<h3 class="overview-h">Momenteel weg (${awayList.length})</h3>`;
-        awayList.forEach(a => {
-          const { card } = buildActiveAppointmentCard(a);
-          awaySection.appendChild(card);
-        });
-        resultsWrap.appendChild(awaySection);
-      }
 
       if(active.length === 0){
         const empty = document.createElement('div');
@@ -2184,6 +2174,19 @@
 
         resultsWrap.appendChild(section);
       });
+
+      // ---- currently-away summary — now below the pickup list, since upcoming pickups matter more at a glance ----
+      if(awayList.length > 0){
+        const awaySection = document.createElement('div');
+        awaySection.className = 'overview-section';
+        awaySection.style.maxWidth = '640px';
+        awaySection.innerHTML = `<h3 class="overview-h">Momenteel weg (${awayList.length})</h3>`;
+        awayList.forEach(a => {
+          const { card } = buildActiveAppointmentCard(a);
+          awaySection.appendChild(card);
+        });
+        resultsWrap.appendChild(awaySection);
+      }
     }
 
     searchInput.addEventListener('input', () => {
