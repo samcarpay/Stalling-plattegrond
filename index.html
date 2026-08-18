@@ -296,6 +296,26 @@
     font-family:var(--font-display);font-size:13px;font-weight:700;color:var(--ink);
     margin:0 0 10px;text-transform:uppercase;letter-spacing:.04em;
   }
+  .agenda-summary-bar{display:flex;gap:8px;margin-bottom:14px;}
+  .agenda-summary-pill{
+    flex:1;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:8px 6px;text-align:center;cursor:pointer;transition:box-shadow .15s;
+  }
+  .agenda-summary-pill:hover{box-shadow:0 2px 8px rgba(27,42,74,.1);}
+  .agenda-summary-pill .num{font-family:var(--font-display);font-size:19px;font-weight:700;line-height:1;color:var(--ink);}
+  .agenda-summary-pill .lbl{font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;margin-top:3px;}
+  .agenda-summary-pill.today .num{color:var(--car);}
+  .agenda-summary-pill.away .num{color:var(--camper);}
+  .agenda-day-heading{
+    font-family:var(--font-display);font-size:12px;font-weight:700;color:var(--ink-soft);
+    margin:12px 0 6px;display:flex;align-items:baseline;gap:8px;
+  }
+  .agenda-day-heading:first-of-type{margin-top:0;}
+  .agenda-day-heading.today{color:var(--ink);}
+  .agenda-day-tag{
+    background:var(--car);color:#fff;font-size:9px;font-family:var(--font-body);font-weight:700;
+    padding:2px 7px;border-radius:10px;text-transform:uppercase;letter-spacing:.03em;
+  }
   .agenda-week-header{
     width:100%;display:flex;justify-content:space-between;align-items:center;
     background:none;border:none;padding:0 0 10px;cursor:pointer;text-align:left;
@@ -325,12 +345,20 @@
 
   /* ---------- agenda ---------- */
   .agenda-card{
-    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    background:var(--card);border:1px solid var(--line);border-left:3px solid var(--line);border-radius:var(--radius);
     padding:10px 12px;margin-bottom:8px;
   }
+  .agenda-card.needs-action{border-left-color:var(--trailer);}
+  .agenda-card.is-linked{border-left-color:var(--camper);}
   .agenda-card.is-away{
     background:#eaf5ec;border-color:#bcdccc;
   }
+  .agenda-badge{
+    display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+    padding:2px 6px;border-radius:4px;margin-left:7px;vertical-align:middle;
+  }
+  .agenda-badge.needs{background:var(--trailer-soft);color:#8a6414;}
+  .agenda-badge.linked{background:var(--camper-soft);color:var(--camper);}
   .agenda-card-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;}
   .agenda-date{font-family:var(--font-display);font-size:11px;color:var(--ink-soft);}
   .agenda-name{font-weight:700;font-size:13.5px;color:var(--ink);margin-top:2px;}
@@ -1953,12 +1981,12 @@
     const matchedOcc = info ? findMatchingOccupant(info.spot, a) : null;
     const away = matchedOcc ? !!matchedOcc.away : false;
     const card = document.createElement('div');
-    card.className = 'agenda-card' + (away ? ' is-away' : '');
+    card.className = 'agenda-card' + (away ? ' is-away' : '') + (info ? ' is-linked' : ' needs-action');
 
     card.innerHTML = `
       <div class="agenda-card-top">
         <div>
-          <div class="agenda-date">${a.date ? escapeHtml(formatDutchDate(a.date)) : '(geen datum opgegeven)'}</div>
+          <div class="agenda-date">${a.date ? escapeHtml(formatDutchDate(a.date)) : '(geen datum opgegeven)'}${info ? '<span class="agenda-badge linked">Gekoppeld</span>' : '<span class="agenda-badge needs">Nog koppelen</span>'}</div>
           <div class="agenda-name">${escapeHtml(a.name || 'Naam onbekend')}</div>
           <div class="agenda-sub">${escapeHtml(a.vehicleDesc || '')}${a.contact ? ' · ' + escapeHtml(a.contact) : ''}</div>
           ${a.notes ? `<div class="agenda-sub">${escapeHtml(a.notes)}</div>` : ''}
@@ -2071,6 +2099,39 @@
       return;
     }
 
+    // ---- summary bar: today / this week / currently away, at a glance ----
+    const todayStr = new Date().toISOString().slice(0,10);
+    const todayCount = active.filter(a => a.date === todayStr).length;
+    const thisWeekMonday = getWeekStart(todayStr);
+    const thisWeekKeyStr = thisWeekMonday ? thisWeekMonday.toISOString().slice(0,10) : null;
+    const weekCount = active.filter(a => {
+      const m = getWeekStart(a.date);
+      return m && thisWeekKeyStr && m.toISOString().slice(0,10) === thisWeekKeyStr;
+    }).length;
+    const awayCountForSummary = active.filter(a => {
+      const info = findLinkedInfo(a.linked);
+      if(!info) return false;
+      const matchedOcc = findMatchingOccupant(info.spot, a);
+      return matchedOcc && matchedOcc.away;
+    }).length;
+
+    const summaryBar = document.createElement('div');
+    summaryBar.className = 'agenda-summary-bar';
+    summaryBar.innerHTML = `
+      <div class="agenda-summary-pill today"><div class="num">${todayCount}</div><div class="lbl">Vandaag</div></div>
+      <div class="agenda-summary-pill week"><div class="num">${weekCount}</div><div class="lbl">Deze week</div></div>
+      <div class="agenda-summary-pill away"><div class="num">${awayCountForSummary}</div><div class="lbl">Momenteel weg</div></div>
+    `;
+    if(thisWeekKeyStr){
+      summaryBar.querySelector('.today').addEventListener('click', () => { expandedWeekKeys.add(thisWeekKeyStr); renderAgendaPage(); });
+      summaryBar.querySelector('.week').addEventListener('click', () => { expandedWeekKeys.add(thisWeekKeyStr); renderAgendaPage(); });
+    }
+    summaryBar.querySelector('.away').addEventListener('click', () => {
+      const awaySection = document.getElementById('agendaAwaySection');
+      if(awaySection) awaySection.scrollIntoView({ behavior:'smooth', block:'start' });
+    });
+    container.appendChild(summaryBar);
+
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
     searchInput.placeholder = 'Zoek op naam, object, kenteken of notitie…';
@@ -2166,9 +2227,25 @@
         section.appendChild(headerBtn);
 
         if(isExpanded){
+          const byDay = {};
           wk.items.forEach(a => {
-            const { card } = buildActiveAppointmentCard(a);
-            section.appendChild(card);
+            const dayKey = a.date || '(geen datum)';
+            if(!byDay[dayKey]) byDay[dayKey] = [];
+            byDay[dayKey].push(a);
+          });
+          Object.keys(byDay).sort().forEach(dayKey => {
+            const dayHeading = document.createElement('div');
+            const isToday = dayKey === todayStr;
+            dayHeading.className = 'agenda-day-heading' + (isToday ? ' today' : '');
+            const label = dayKey === '(geen datum)' ? 'Geen datum opgegeven' : formatDutchDate(dayKey);
+            dayHeading.innerHTML = isToday
+              ? `<span class="agenda-day-tag">Vandaag</span> ${escapeHtml(label)}`
+              : escapeHtml(label);
+            section.appendChild(dayHeading);
+            byDay[dayKey].forEach(a => {
+              const { card } = buildActiveAppointmentCard(a);
+              section.appendChild(card);
+            });
           });
         }
 
