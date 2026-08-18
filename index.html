@@ -296,6 +296,16 @@
     font-family:var(--font-display);font-size:13px;font-weight:700;color:var(--ink);
     margin:0 0 10px;text-transform:uppercase;letter-spacing:.04em;
   }
+  .agenda-week-header{
+    width:100%;display:flex;justify-content:space-between;align-items:center;
+    background:none;border:none;padding:0 0 10px;cursor:pointer;text-align:left;
+    font-family:var(--font-display);font-size:13px;font-weight:700;color:var(--ink);
+    text-transform:uppercase;letter-spacing:.04em;
+  }
+  .agenda-week-count{
+    background:var(--paper-line);color:var(--ink-soft);font-size:11px;font-weight:700;
+    padding:1px 8px;border-radius:10px;text-transform:none;letter-spacing:0;
+  }
   .overview-table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
   .overview-table th{
     text-align:left;font-family:var(--font-display);font-size:10.5px;color:var(--ink-soft);
@@ -1730,7 +1740,7 @@
     return monday;
   }
 
-  function openReturnConfirmModal(info){
+  function openReturnConfirmModal(info, occupant){
     const overlay = document.getElementById('overlay');
     const body = document.getElementById('modalBody');
     body.className = 'modal';
@@ -1746,13 +1756,13 @@
     `;
     overlay.classList.add('show');
     document.getElementById('sameBayBtn').addEventListener('click', () => {
-      info.spot.occupants.forEach(o => { o.away = false; });
+      if(occupant) occupant.away = false;
       closeModal();
       render(); save();
     });
     document.getElementById('otherBayBtn').addEventListener('click', () => {
       closeModal();
-      openMoveReturnedVehicleSearchModal(info);
+      openMoveReturnedVehicleSearchModal(info, occupant);
     });
     document.getElementById('returnCancelBtn').addEventListener('click', closeModal);
     overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
@@ -1817,7 +1827,7 @@
     overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
   }
 
-  function openMoveReturnedVehicleSearchModal(info){
+  function openMoveReturnedVehicleSearchModal(info, occupant){
     const overlay = document.getElementById('overlay');
     const body = document.getElementById('modalBody');
     body.className = 'modal wide';
@@ -1853,10 +1863,12 @@
       resEl.querySelectorAll('[data-return-result]').forEach(node => {
         node.addEventListener('click', () => {
           const r = results[parseInt(node.getAttribute('data-return-result'), 10)];
-          const movedOccupants = info.spot.occupants.filter(o => o.away);
-          info.spot.occupants = info.spot.occupants.filter(o => !o.away);
-          movedOccupants.forEach(o => { o.away = false; });
-          r.spot.occupants = (r.spot.occupants || []).concat(movedOccupants);
+          if(!occupant){ closeModal(); return; }
+          const idx = info.spot.occupants.indexOf(occupant);
+          if(idx === -1){ closeModal(); return; }
+          info.spot.occupants.splice(idx, 1);
+          occupant.away = false;
+          r.spot.occupants = (r.spot.occupants || []).concat([occupant]);
           closeModal();
           render(); save();
         });
@@ -1867,6 +1879,27 @@
 
     document.getElementById('returnSearchCancelBtn').addEventListener('click', closeModal);
     overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
+  }
+
+  // Finds the ONE occupant in a (possibly multi-vehicle) bay that a given
+  // appointment actually refers to — matches by object nummer first (most
+  // precise), then by name, and only assumes "the only occupant" when
+  // there's genuinely just one. Returns null if it can't tell for sure,
+  // rather than guessing and risking the wrong person getting toggled.
+  function findMatchingOccupant(spot, appt){
+    if(!spot || !spot.occupants || spot.occupants.length === 0) return null;
+    if(spot.occupants.length === 1) return spot.occupants[0];
+    const apptObjNum = (appt.vehicleDesc || '').trim().toLowerCase();
+    if(apptObjNum){
+      const byObjNum = spot.occupants.find(o => (o.objectNummer || '').trim().toLowerCase() === apptObjNum);
+      if(byObjNum) return byObjNum;
+    }
+    const apptName = (appt.name || '').trim().toLowerCase();
+    if(apptName){
+      const byName = spot.occupants.find(o => (o.name || '').trim().toLowerCase() === apptName);
+      if(byName) return byName;
+    }
+    return null;
   }
 
   function findLinkedInfo(linked){
@@ -1908,6 +1941,93 @@
 
   let showAgendaHistory = false; // UI-only, not persisted
 
+  let agendaSearchQuery = ''; // persisted across re-renders
+  let expandedWeekKeys = new Set(); // which weeks are manually expanded; current week always included
+
+  // Builds one fully-wired appointment card — shared by the away summary,
+  // search results, and the normal week-grouped list, so all three stay
+  // in sync automatically instead of drifting apart over time.
+  function buildActiveAppointmentCard(a){
+    const info = findLinkedInfo(a.linked);
+    const suggestion = !info ? findObjectNummerMatch(a) : null;
+    const matchedOcc = info ? findMatchingOccupant(info.spot, a) : null;
+    const away = matchedOcc ? !!matchedOcc.away : false;
+    const card = document.createElement('div');
+    card.className = 'agenda-card' + (away ? ' is-away' : '');
+
+    card.innerHTML = `
+      <div class="agenda-card-top">
+        <div>
+          <div class="agenda-date">${a.date ? escapeHtml(formatDutchDate(a.date)) : '(geen datum opgegeven)'}</div>
+          <div class="agenda-name">${escapeHtml(a.name || 'Naam onbekend')}</div>
+          <div class="agenda-sub">${escapeHtml(a.vehicleDesc || '')}${a.contact ? ' · ' + escapeHtml(a.contact) : ''}</div>
+          ${a.notes ? `<div class="agenda-sub">${escapeHtml(a.notes)}</div>` : ''}
+        </div>
+        <div class="agenda-actions"></div>
+      </div>
+      <div class="agenda-link">
+        ${info
+          ? `Gekoppeld aan <strong>${escapeHtml(info.warehouse.name)}</strong>, plek ${escapeHtml(displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R')))}${away ? ' — <span style="color:var(--ink);font-weight:700;">momenteel weg</span>' : ''}`
+          : suggestion
+            ? `<span style="color:var(--camper);">Mogelijke match:</span> <strong>${escapeHtml(suggestion.warehouse.name)}</strong>, plek ${escapeHtml(displayTag(suggestion.spot, suggestion.warehouse.layout==='single' ? '' : (suggestion.side==='left'?'L':'R')))} (object nummer komt overeen)`
+            : `<span style="color:var(--car);">Nog niet gekoppeld aan een plek</span>`
+        }
+      </div>
+    `;
+    const actionsEl = card.querySelector('.agenda-actions');
+    if(info){
+      const awayBtn = document.createElement('button');
+      awayBtn.className = 'btn ghost small';
+      awayBtn.textContent = away ? 'Terug gemeld' : 'Markeer als weg';
+      awayBtn.addEventListener('click', () => {
+        if(away){
+          openReturnConfirmModal(info, matchedOcc);
+        } else if(matchedOcc){
+          matchedOcc.away = true;
+          render(); save();
+        } else {
+          alert('Kan niet met zekerheid bepalen welk voertuig in deze plek het betreft (meerdere voertuigen, geen duidelijke overeenkomst met naam of object nummer). Pas de plek zelf handmatig aan om deze klant als weg te markeren.');
+        }
+      });
+      actionsEl.appendChild(awayBtn);
+    } else {
+      if(suggestion){
+        const confirmBtn = document.createElement('button');
+        confirmBtn.className = 'btn small';
+        confirmBtn.textContent = 'Match bevestigen';
+        confirmBtn.addEventListener('click', () => {
+          appointmentsRef.child(a.id).update({
+            linked: { warehouseId: suggestion.warehouse.id, spotId: suggestion.spot.id }
+          });
+        });
+        actionsEl.appendChild(confirmBtn);
+      }
+      const linkBtn = document.createElement('button');
+      linkBtn.className = 'btn ghost small';
+      linkBtn.textContent = suggestion ? 'Toch zoeken' : 'Koppel aan plek';
+      linkBtn.addEventListener('click', () => openLinkAppointmentModal(a.id));
+      actionsEl.appendChild(linkBtn);
+    }
+    const doneBtn = document.createElement('button');
+    doneBtn.className = 'btn ghost small';
+    doneBtn.textContent = 'Markeer als afgerond';
+    doneBtn.addEventListener('click', () => {
+      appointmentsRef.child(a.id).update({ status: 'done', completedAt: Date.now() });
+    });
+    actionsEl.appendChild(doneBtn);
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn ghost small';
+    delBtn.textContent = '✕';
+    delBtn.title = 'Deze aanvraag verwijderen';
+    delBtn.addEventListener('click', () => {
+      confirmAction('Deze aanvraag verwijderen?', `Dit verwijdert de aanvraag permanent uit de agenda.`, () => {
+        appointmentsRef.child(a.id).remove();
+      });
+    });
+    actionsEl.appendChild(delBtn);
+    return { card, away };
+  }
+
   function renderAgendaPage(){
     const wrap = document.getElementById('plan');
     wrap.innerHTML = '';
@@ -1921,7 +2041,7 @@
     container.className = 'overview';
 
     const toolbarRow = document.createElement('div');
-    toolbarRow.style.cssText = 'display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;';
+    toolbarRow.style.cssText = 'display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;';
 
     const addBtn = document.createElement('button');
     addBtn.className = 'btn small';
@@ -1941,6 +2061,7 @@
     container.appendChild(toolbarRow);
 
     const active = appointments.filter(a => a.status !== 'done');
+
     if(active.length === 0 && !showAgendaHistory){
       const empty = document.createElement('div');
       empty.className = 'print-empty';
@@ -1949,117 +2070,128 @@
       wrap.appendChild(container);
       return;
     }
-    if(active.length === 0){
-      const empty = document.createElement('div');
-      empty.className = 'print-empty';
-      empty.textContent = 'Op dit moment geen actieve ophaalafspraken.';
-      container.appendChild(empty);
-    }
 
-    const weeks = {};
-    active.forEach(a => {
-      const monday = getWeekStart(a.date) || new Date(a.createdAt || Date.now());
-      const key = monday.toISOString().slice(0,10);
-      if(!weeks[key]) weeks[key] = { monday, items: [] };
-      weeks[key].items.push(a);
-    });
-    let weekKeys = Object.keys(weeks).sort();
-    const currentWeekKey = getWeekStart(new Date().toISOString().slice(0,10));
-    const currentWeekKeyStr = currentWeekKey ? currentWeekKey.toISOString().slice(0,10) : null;
-    if(currentWeekKeyStr && weekKeys.includes(currentWeekKeyStr)){
-      weekKeys = [currentWeekKeyStr, ...weekKeys.filter(k => k !== currentWeekKeyStr)];
-    }
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Zoek op naam, object, kenteken of notitie…';
+    searchInput.value = agendaSearchQuery;
+    searchInput.style.cssText = 'width:100%;padding:9px 11px;margin-bottom:14px;border:1px solid var(--line);border-radius:var(--radius);font-size:13.5px;font-family:inherit;background:var(--card);color:var(--ink);box-sizing:border-box;';
+    container.appendChild(searchInput);
 
-    weekKeys.forEach(key => {
-      const wk = weeks[key];
-      wk.items.sort((a,b) => (a.date||'').localeCompare(b.date||''));
-      const endDate = new Date(wk.monday);
-      endDate.setDate(endDate.getDate() + 6);
-      const section = document.createElement('div');
-      section.className = 'overview-section';
-      section.style.maxWidth = '640px';
-      section.innerHTML = `<h3 class="overview-h">Week van ${wk.monday.toLocaleDateString()} – ${endDate.toLocaleDateString()}</h3>`;
+    const resultsWrap = document.createElement('div');
+    container.appendChild(resultsWrap);
 
-      wk.items.forEach(a => {
-        const info = findLinkedInfo(a.linked);
-        const suggestion = !info ? findObjectNummerMatch(a) : null;
-        const away = info && info.spot.occupants && info.spot.occupants.some(o => o.away);
-        const card = document.createElement('div');
-        card.className = 'agenda-card' + (away ? ' is-away' : '');
+    function renderResults(){
+      resultsWrap.innerHTML = '';
+      const q = agendaSearchQuery.trim().toLowerCase();
 
-        card.innerHTML = `
-          <div class="agenda-card-top">
-            <div>
-              <div class="agenda-date">${a.date ? escapeHtml(formatDutchDate(a.date)) : '(geen datum opgegeven)'}</div>
-              <div class="agenda-name">${escapeHtml(a.name || 'Naam onbekend')}</div>
-              <div class="agenda-sub">${escapeHtml(a.vehicleDesc || '')}${a.contact ? ' · ' + escapeHtml(a.contact) : ''}</div>
-              ${a.notes ? `<div class="agenda-sub">${escapeHtml(a.notes)}</div>` : ''}
-            </div>
-            <div class="agenda-actions"></div>
-          </div>
-          <div class="agenda-link">
-            ${info
-              ? `Gekoppeld aan <strong>${escapeHtml(info.warehouse.name)}</strong>, plek ${escapeHtml(displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R')))}${away ? ' — <span style="color:var(--ink);font-weight:700;">momenteel weg</span>' : ''}`
-              : suggestion
-                ? `<span style="color:var(--camper);">Mogelijke match:</span> <strong>${escapeHtml(suggestion.warehouse.name)}</strong>, plek ${escapeHtml(displayTag(suggestion.spot, suggestion.warehouse.layout==='single' ? '' : (suggestion.side==='left'?'L':'R')))} (object nummer komt overeen)`
-                : `<span style="color:var(--car);">Nog niet gekoppeld aan een plek</span>`
-            }
-          </div>
-        `;
-        const actionsEl = card.querySelector('.agenda-actions');
-        if(info){
-          const awayBtn = document.createElement('button');
-          awayBtn.className = 'btn ghost small';
-          awayBtn.textContent = away ? 'Terug gemeld' : 'Markeer als weg';
-          awayBtn.addEventListener('click', () => {
-            if(away){
-              openReturnConfirmModal(info);
-            } else {
-              info.spot.occupants.forEach(o => { o.away = true; });
-              render(); save();
-            }
-          });
-          actionsEl.appendChild(awayBtn);
-        } else {
-          if(suggestion){
-            const confirmBtn = document.createElement('button');
-            confirmBtn.className = 'btn small';
-            confirmBtn.textContent = 'Match bevestigen';
-            confirmBtn.addEventListener('click', () => {
-              appointmentsRef.child(a.id).update({
-                linked: { warehouseId: suggestion.warehouse.id, spotId: suggestion.spot.id }
-              });
-            });
-            actionsEl.appendChild(confirmBtn);
-          }
-          const linkBtn = document.createElement('button');
-          linkBtn.className = 'btn ghost small';
-          linkBtn.textContent = suggestion ? 'Toch zoeken' : 'Koppel aan plek';
-          linkBtn.addEventListener('click', () => openLinkAppointmentModal(a.id));
-          actionsEl.appendChild(linkBtn);
+      if(q){
+        const matches = active.filter(a => {
+          const hay = [a.name, a.vehicleDesc, a.contact, a.notes].filter(Boolean).join(' ').toLowerCase();
+          return hay.includes(q);
+        }).sort((a,b) => (a.date||'').localeCompare(b.date||''));
+
+        const section = document.createElement('div');
+        section.className = 'overview-section';
+        section.style.maxWidth = '640px';
+        section.innerHTML = `<h3 class="overview-h">${matches.length} resultaat${matches.length===1?'':'en'} voor "${escapeHtml(agendaSearchQuery)}"</h3>`;
+        if(matches.length === 0){
+          const empty = document.createElement('div');
+          empty.className = 'print-empty';
+          empty.textContent = 'Niets gevonden.';
+          section.appendChild(empty);
         }
-        const doneBtn = document.createElement('button');
-        doneBtn.className = 'btn ghost small';
-        doneBtn.textContent = 'Markeer als afgerond';
-        doneBtn.addEventListener('click', () => {
-          appointmentsRef.child(a.id).update({ status: 'done', completedAt: Date.now() });
+        matches.forEach(a => {
+          const { card } = buildActiveAppointmentCard(a);
+          section.appendChild(card);
         });
-        actionsEl.appendChild(doneBtn);
-        const delBtn = document.createElement('button');
-        delBtn.className = 'btn ghost small';
-        delBtn.textContent = '✕';
-        delBtn.title = 'Deze aanvraag verwijderen';
-        delBtn.addEventListener('click', () => {
-          confirmAction('Deze aanvraag verwijderen?', `Dit verwijdert de aanvraag permanent uit de agenda.`, () => {
-            appointmentsRef.child(a.id).remove();
-          });
-        });
-        actionsEl.appendChild(delBtn);
-        section.appendChild(card);
-      });
+        resultsWrap.appendChild(section);
+        return;
+      }
 
-      container.appendChild(section);
+      // ---- currently-away summary — always visible, no scrolling needed ----
+      const awayList = active.filter(a => {
+        const info = findLinkedInfo(a.linked);
+        if(!info) return false;
+        const matchedOcc = findMatchingOccupant(info.spot, a);
+        return matchedOcc && matchedOcc.away;
+      });
+      if(awayList.length > 0){
+        const awaySection = document.createElement('div');
+        awaySection.className = 'overview-section';
+        awaySection.style.maxWidth = '640px';
+        awaySection.innerHTML = `<h3 class="overview-h">Momenteel weg (${awayList.length})</h3>`;
+        awayList.forEach(a => {
+          const { card } = buildActiveAppointmentCard(a);
+          awaySection.appendChild(card);
+        });
+        resultsWrap.appendChild(awaySection);
+      }
+
+      if(active.length === 0){
+        const empty = document.createElement('div');
+        empty.className = 'print-empty';
+        empty.textContent = 'Op dit moment geen actieve ophaalafspraken.';
+        resultsWrap.appendChild(empty);
+        return;
+      }
+
+      // ---- week-grouped list, collapsible so upcoming weeks don't force endless scrolling ----
+      const weeks = {};
+      active.forEach(a => {
+        const monday = getWeekStart(a.date) || new Date(a.createdAt || Date.now());
+        const key = monday.toISOString().slice(0,10);
+        if(!weeks[key]) weeks[key] = { monday, items: [] };
+        weeks[key].items.push(a);
+      });
+      let weekKeys = Object.keys(weeks).sort();
+      const currentWeekKey = getWeekStart(new Date().toISOString().slice(0,10));
+      const currentWeekKeyStr = currentWeekKey ? currentWeekKey.toISOString().slice(0,10) : null;
+      if(currentWeekKeyStr){
+        expandedWeekKeys.add(currentWeekKeyStr);
+        if(weekKeys.includes(currentWeekKeyStr)){
+          weekKeys = [currentWeekKeyStr, ...weekKeys.filter(k => k !== currentWeekKeyStr)];
+        }
+      }
+
+      weekKeys.forEach(key => {
+        const wk = weeks[key];
+        wk.items.sort((a,b) => (a.date||'').localeCompare(b.date||''));
+        const endDate = new Date(wk.monday);
+        endDate.setDate(endDate.getDate() + 6);
+        const isExpanded = expandedWeekKeys.has(key);
+
+        const section = document.createElement('div');
+        section.className = 'overview-section';
+        section.style.maxWidth = '640px';
+
+        const headerBtn = document.createElement('button');
+        headerBtn.className = 'agenda-week-header';
+        headerBtn.innerHTML = `<span>${isExpanded ? '▾' : '▸'} Week van ${wk.monday.toLocaleDateString()} – ${endDate.toLocaleDateString()}</span><span class="agenda-week-count">${wk.items.length}</span>`;
+        headerBtn.addEventListener('click', () => {
+          if(expandedWeekKeys.has(key)) expandedWeekKeys.delete(key);
+          else expandedWeekKeys.add(key);
+          renderResults();
+        });
+        section.appendChild(headerBtn);
+
+        if(isExpanded){
+          wk.items.forEach(a => {
+            const { card } = buildActiveAppointmentCard(a);
+            section.appendChild(card);
+          });
+        }
+
+        resultsWrap.appendChild(section);
+      });
+    }
+
+    searchInput.addEventListener('input', () => {
+      agendaSearchQuery = searchInput.value;
+      renderResults();
     });
+
+    renderResults();
 
     if(showAgendaHistory){
       const done = appointments.filter(a => a.status === 'done')
@@ -3619,14 +3751,12 @@
       <div id="storageFields" style="${spot.isDoor ? 'display:none;' : ''}">
         <div class="field">
           <label>Type &nbsp;<a href="#" id="manageTypesLink" style="font-weight:400;text-transform:none;letter-spacing:0;">typen beheren</a></label>
-          <div class="type-row" id="typeRow">
+          <select id="fTypeSelect" style="width:100%;">
             ${order.map(key => {
               const t = TYPES[key];
-              const active = spot.type===key;
-              const styleAttr = active ? ` style="border-color:${t.color};background:${hexAlpha(t.color,0.14)};color:${t.color}"` : '';
-              return `<div class="type-chip ${active?'active':''}" data-type="${key}"${styleAttr}>${escapeHtml(t.label)}</div>`;
+              return `<option value="${key}" ${spot.type===key ? 'selected' : ''}>${escapeHtml(t.label)}</option>`;
             }).join('')}
-          </div>
+          </select>
         </div>
         <div class="field">
           <label>Lengte (m)</label>
@@ -3725,20 +3855,10 @@
     });
 
     let selectedType = spot.type;
-    body.querySelectorAll('.type-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        selectedType = chip.getAttribute('data-type');
-        body.querySelectorAll('.type-chip').forEach(c => {
-          c.classList.remove('active');
-          c.style.borderColor = ''; c.style.background = ''; c.style.color = '';
-        });
-        const t = TYPES[selectedType];
-        chip.classList.add('active');
-        chip.style.borderColor = t.color;
-        chip.style.background = hexAlpha(t.color, 0.14);
-        chip.style.color = t.color;
-        document.getElementById('fLength').value = t.length;
-      });
+    document.getElementById('fTypeSelect').addEventListener('change', (e) => {
+      selectedType = e.target.value;
+      const t = TYPES[selectedType];
+      document.getElementById('fLength').value = t.length;
     });
 
     document.getElementById('manageTypesLink').addEventListener('click', (e) => {
