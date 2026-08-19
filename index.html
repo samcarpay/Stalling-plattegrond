@@ -360,6 +360,8 @@
   .agenda-badge.needs{background:var(--trailer-soft);color:#8a6414;}
   .agenda-badge.linked{background:var(--camper-soft);color:var(--camper);}
   .agenda-card-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;}
+  .agenda-expand-icon{color:var(--ink-faint);font-size:13px;flex-shrink:0;padding-top:2px;}
+  .agenda-card-details{margin-top:8px;padding-top:8px;border-top:1px solid var(--paper-line);}
   .agenda-date{font-family:var(--font-display);font-size:11px;color:var(--ink-soft);}
   .agenda-name{font-weight:700;font-size:13.5px;color:var(--ink);margin-top:2px;}
   .agenda-sub{font-size:11.5px;color:var(--ink-soft);margin-top:1px;}
@@ -1975,39 +1977,57 @@
   // Builds one fully-wired appointment card — shared by the away summary,
   // search results, and the normal week-grouped list, so all three stay
   // in sync automatically instead of drifting apart over time.
+  let expandedCardIds = new Set(); // which appointment cards are tapped open; persists across re-renders
+
   function buildActiveAppointmentCard(a){
     const info = findLinkedInfo(a.linked);
     const suggestion = !info ? findObjectNummerMatch(a) : null;
     const matchedOcc = info ? findMatchingOccupant(info.spot, a) : null;
     const away = matchedOcc ? !!matchedOcc.away : false;
+    const isOpen = expandedCardIds.has(a.id);
     const card = document.createElement('div');
     card.className = 'agenda-card' + (away ? ' is-away' : '') + (info ? ' is-linked' : ' needs-action');
 
+    // One compact line: where it's linked if it is, otherwise the vehicle/contact info.
+    const compactSub = info
+      ? `${info.warehouse.name} · plek ${displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R'))}`
+      : [a.vehicleDesc, a.contact].filter(Boolean).join(' · ');
+
     card.innerHTML = `
-      <div class="agenda-card-top">
+      <div class="agenda-card-top" style="cursor:pointer;">
         <div>
           <div class="agenda-date">${a.date ? escapeHtml(formatDutchDate(a.date)) : '(geen datum opgegeven)'}${info ? '<span class="agenda-badge linked">Gekoppeld</span>' : '<span class="agenda-badge needs">Nog koppelen</span>'}</div>
           <div class="agenda-name">${escapeHtml(a.name || 'Naam onbekend')}</div>
-          <div class="agenda-sub">${escapeHtml(a.vehicleDesc || '')}${a.contact ? ' · ' + escapeHtml(a.contact) : ''}</div>
-          ${a.notes ? `<div class="agenda-sub">${escapeHtml(a.notes)}</div>` : ''}
+          <div class="agenda-sub">${escapeHtml(compactSub)}${away ? ' · <strong style="color:var(--ink);">momenteel weg</strong>' : ''}</div>
+        </div>
+        <div class="agenda-expand-icon">${isOpen ? '▾' : '▸'}</div>
+      </div>
+      <div class="agenda-card-details" style="display:${isOpen ? 'block' : 'none'};">
+        ${(a.vehicleDesc || a.contact) && info ? `<div class="agenda-sub">${escapeHtml([a.vehicleDesc, a.contact].filter(Boolean).join(' · '))}</div>` : ''}
+        ${a.notes ? `<div class="agenda-sub">${escapeHtml(a.notes)}</div>` : ''}
+        <div class="agenda-link">
+          ${info
+            ? `Gekoppeld aan <strong>${escapeHtml(info.warehouse.name)}</strong>, plek ${escapeHtml(displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R')))}${away ? ' — <span style="color:var(--ink);font-weight:700;">momenteel weg</span>' : ''}`
+            : suggestion
+              ? `<span style="color:var(--camper);">Mogelijke match:</span> <strong>${escapeHtml(suggestion.warehouse.name)}</strong>, plek ${escapeHtml(displayTag(suggestion.spot, suggestion.warehouse.layout==='single' ? '' : (suggestion.side==='left'?'L':'R')))} (object nummer komt overeen)`
+              : `<span style="color:var(--car);">Nog niet gekoppeld aan een plek</span>`
+          }
         </div>
         <div class="agenda-actions"></div>
       </div>
-      <div class="agenda-link">
-        ${info
-          ? `Gekoppeld aan <strong>${escapeHtml(info.warehouse.name)}</strong>, plek ${escapeHtml(displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R')))}${away ? ' — <span style="color:var(--ink);font-weight:700;">momenteel weg</span>' : ''}`
-          : suggestion
-            ? `<span style="color:var(--camper);">Mogelijke match:</span> <strong>${escapeHtml(suggestion.warehouse.name)}</strong>, plek ${escapeHtml(displayTag(suggestion.spot, suggestion.warehouse.layout==='single' ? '' : (suggestion.side==='left'?'L':'R')))} (object nummer komt overeen)`
-            : `<span style="color:var(--car);">Nog niet gekoppeld aan een plek</span>`
-        }
-      </div>
     `;
+    card.querySelector('.agenda-card-top').addEventListener('click', () => {
+      if(expandedCardIds.has(a.id)) expandedCardIds.delete(a.id);
+      else expandedCardIds.add(a.id);
+      render();
+    });
     const actionsEl = card.querySelector('.agenda-actions');
     if(info){
       const awayBtn = document.createElement('button');
       awayBtn.className = 'btn ghost small';
       awayBtn.textContent = away ? 'Terug gemeld' : 'Markeer als weg';
-      awayBtn.addEventListener('click', () => {
+      awayBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
         if(away){
           openReturnConfirmModal(info, matchedOcc);
         } else if(matchedOcc){
@@ -2023,7 +2043,8 @@
         const confirmBtn = document.createElement('button');
         confirmBtn.className = 'btn small';
         confirmBtn.textContent = 'Match bevestigen';
-        confirmBtn.addEventListener('click', () => {
+        confirmBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
           appointmentsRef.child(a.id).update({
             linked: { warehouseId: suggestion.warehouse.id, spotId: suggestion.spot.id }
           });
@@ -2033,13 +2054,14 @@
       const linkBtn = document.createElement('button');
       linkBtn.className = 'btn ghost small';
       linkBtn.textContent = suggestion ? 'Toch zoeken' : 'Koppel aan plek';
-      linkBtn.addEventListener('click', () => openLinkAppointmentModal(a.id));
+      linkBtn.addEventListener('click', (e) => { e.stopPropagation(); openLinkAppointmentModal(a.id); });
       actionsEl.appendChild(linkBtn);
     }
     const doneBtn = document.createElement('button');
     doneBtn.className = 'btn ghost small';
     doneBtn.textContent = 'Markeer als afgerond';
-    doneBtn.addEventListener('click', () => {
+    doneBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
       appointmentsRef.child(a.id).update({ status: 'done', completedAt: Date.now() });
     });
     actionsEl.appendChild(doneBtn);
@@ -2047,7 +2069,8 @@
     delBtn.className = 'btn ghost small';
     delBtn.textContent = '✕';
     delBtn.title = 'Deze aanvraag verwijderen';
-    delBtn.addEventListener('click', () => {
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
       confirmAction('Deze aanvraag verwijderen?', `Dit verwijdert de aanvraag permanent uit de agenda.`, () => {
         appointmentsRef.child(a.id).remove();
       });
