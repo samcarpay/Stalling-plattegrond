@@ -248,6 +248,28 @@ const BLOCKED_DATES_PATH = "blocked-dates";
 const NIEUWE_KLANTEN_ENABLED = true;
 
 // ─────────────────────────────────────────────────────────────────
+// LINK TO THE CONTRACT ARCHIVE (optional, needs NIEUWE_KLANTEN_ENABLED
+// above turned on — it reuses that same connection to the contract
+// system's Firestore data)
+//
+// Once this is set, any customer in the "👥 Klanten" tab whose object
+// nummer matches a signed contract gets a "✅ Contract getekend" badge,
+// plus a "📄 Bekijk contract" button that opens that exact contract in
+// admin.html (the contract system's staff archive) in a new tab — no
+// more digging through e-mails or searching the archive by hand.
+//
+// Set this to the exact web address where admin.html lives — the same
+// folder as onderteken.html, e.g.:
+//   'https://uwsite.nl/stallingscontract/admin.html'
+//
+// Leave blank ("") to turn off just this link — nothing else changes,
+// and the "getekend" badge alone still needs NIEUWE_KLANTEN_ENABLED above
+// to be on either way.
+// ─────────────────────────────────────────────────────────────────
+
+const CONTRACT_ADMIN_URL = "https://zwartendijkstalling.nl/stallingscontract/admin.html";
+
+// ─────────────────────────────────────────────────────────────────
 // OFF-FIREBASE EMAIL BACKUP (optional)
 //
 // Everything in this app currently lives in one Firebase project.
