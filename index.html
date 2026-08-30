@@ -366,6 +366,7 @@
   .agenda-name{font-weight:700;font-size:13.5px;color:var(--ink);margin-top:2px;}
   .agenda-sub{font-size:11.5px;color:var(--ink-soft);margin-top:1px;}
   .agenda-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;}
+  .contract-badge{display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-family:var(--font-display);font-size:10.5px;font-weight:700;letter-spacing:.02em;color:var(--camper);}
   .agenda-link{font-size:11.5px;color:var(--ink-soft);margin-top:8px;padding-top:8px;border-top:1px dashed var(--paper-line);}
 
   /* ---------- warehouse plan ---------- */
@@ -1190,6 +1191,10 @@
 
   // ---------- nieuwe klanten (signed contracts from the separate contract system) ----------
   let nieuweKlanten = [];      // signed ('voltooid') contracts not yet placed into a bay
+  // ALL signed contracts (placed or not), keyed by normalized object nummer —
+  // lets the Klanten tab show a "contract getekend" badge on any occupant
+  // whose object nummer matches a signed contract, not just unplaced ones.
+  let signedContractsByObjNum = {};
   let contractDb = null;
   let showNieuweKlanten = false; // UI-only, not persisted
   let showWinterstalling = false; // UI-only, not persisted
@@ -1201,11 +1206,19 @@
       contractDb = firebase.firestore();
       contractDb.collection('aanvragen').where('status', '==', 'voltooid')
         .onSnapshot((snap) => {
-          nieuweKlanten = snap.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(d => !d.geplaatstInStorageSites);
+          const all = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          nieuweKlanten = all.filter(d => !d.geplaatstInStorageSites);
+          signedContractsByObjNum = {};
+          all.forEach(d => {
+            const key = (d.objectnummer || '').trim().toLowerCase();
+            if(key) signedContractsByObjNum[key] = d;
+          });
           renderTabs();
           if(showNieuweKlanten) renderNieuweKlantenPage();
+          // Klanten is intentionally NOT force-re-rendered here — it has its
+          // own live search box, and re-rendering on every contract update
+          // would drop focus/typed text mid-search. The badge still shows
+          // correctly on the next natural render (opening the tab, etc.).
         }, (error) => {
           console.error('Nieuwe klanten sync error', error);
         });
@@ -2489,6 +2502,11 @@
         const tag = displayTag(r.spot, r.tagPrefix);
         const o = r.occupant;
 
+        // Only meaningful once NIEUWE_KLANTEN_ENABLED is on (see
+        // firebase-config.js) — signedContractsByObjNum is empty otherwise,
+        // so this quietly does nothing rather than erroring.
+        const signedContract = signedContractsByObjNum[(o.objectNummer || '').trim().toLowerCase()];
+
         const card = document.createElement('div');
         card.className = 'agenda-card';
         card.innerHTML = `
@@ -2499,11 +2517,21 @@
               <div class="agenda-sub">${escapeHtml(r.warehouse.name)} · plek ${escapeHtml(tag)}${r.isWinterKlant ? ' (tijdelijk, over de winter)' : ' · ' + escapeHtml(t.label)}</div>
               ${(o.phone || o.email) ? `<div class="agenda-sub">${[o.phone, o.email].filter(Boolean).map(escapeHtml).join(' · ')}</div>` : ''}
               ${r.isWinterKlant && r.winterPrice ? `<div class="agenda-sub">€ ${escapeHtml(String(r.winterPrice))} · ${r.winterBetaald ? 'betaald' : 'nog niet betaald'}</div>` : ''}
+              ${signedContract ? `<div class="contract-badge">✅ Contract getekend</div>` : ''}
             </div>
             <div class="agenda-actions"></div>
           </div>
         `;
         const actionsEl = card.querySelector('.agenda-actions');
+        if(signedContract && typeof CONTRACT_ADMIN_URL !== 'undefined' && CONTRACT_ADMIN_URL){
+          const contractBtn = document.createElement('button');
+          contractBtn.className = 'btn ghost small';
+          contractBtn.textContent = '📄 Bekijk contract';
+          contractBtn.addEventListener('click', () => {
+            window.open(`${CONTRACT_ADMIN_URL}?id=${encodeURIComponent(signedContract.id)}`, '_blank');
+          });
+          actionsEl.appendChild(contractBtn);
+        }
         const jumpBtn = document.createElement('button');
         jumpBtn.className = 'btn ghost small';
         jumpBtn.textContent = 'Open plek';
