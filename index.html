@@ -2016,13 +2016,14 @@
     if(a.vehicleDesc) subjectParts.push(`object ${a.vehicleDesc}`);
     const subject = subjectParts.join(' — ');
     const firstName = (a.name || '').trim().split(/\s+/)[0] || '';
+    // Ends with exactly one blank line (two trailing \n) in both branches
+    // — the greeting alone already provides that when there's no note, so
+    // nothing extra is appended in that case.
     let body = `Beste ${firstName || 'klant'},\n\n`;
     if(a.notes && a.notes.trim()){
       const context = [a.vehicleDesc ? `object ${a.vehicleDesc}` : '', a.date ? `op ${formatDutchDate(a.date)}` : '']
         .filter(Boolean).join(' ');
-      body += `Naar aanleiding van uw opmerking bij de ophaalaanvraag${context ? ' (' + context + ')' : ''}:\n"${a.notes.trim()}"\n\n\n`;
-    } else {
-      body += '\n\n';
+      body += `Naar aanleiding van uw opmerking bij de ophaalaanvraag${context ? ' (' + context + ')' : ''}:\n"${a.notes.trim()}"\n\n`;
     }
     return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   }
