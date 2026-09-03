@@ -2723,6 +2723,16 @@
     section.innerHTML = `<h3 class="overview-h">Ondertekende contracten, nog niet geplaatst</h3>`;
 
     nieuweKlanten.forEach(d => {
+      // A contract's object nummer can already belong to an occupied bay —
+      // e.g. a manually-created contract for an EXISTING customer (a
+      // renewal/paperwork contract), which reuses their current object
+      // nummer. That customer doesn't need a bay found for them; they
+      // already have one. Detect that case and offer a one-click "already
+      // placed" resolution instead of forcing a search through empty bays
+      // (which would correctly find nothing, since their bay isn't empty).
+      const existingMatches = findOtherBaysWithObjectNummer(d.objectnummer, null);
+      const alreadyPlaced = existingMatches.length > 0;
+
       const card = document.createElement('div');
       card.className = 'agenda-card';
       card.innerHTML = `
@@ -2732,16 +2742,39 @@
             <div class="agenda-name">${escapeHtml(d.voornaam || '')} ${escapeHtml(d.achternaam || '')}</div>
             <div class="agenda-sub">${escapeHtml(d.categorie || '')} — ${escapeHtml(d.merk || '')} ${escapeHtml(d.type || '')}${d.lengte ? ` (${d.lengte}m × ${d.breedte}m)` : ''}</div>
             <div class="agenda-sub">${escapeHtml(d.email || '')}${d.telefoon ? ' · ' + escapeHtml(d.telefoon) : ''}${d.kenteken ? ' · ' + escapeHtml(d.kenteken) : ''}</div>
+            ${alreadyPlaced ? `<div class="agenda-sub" style="color:var(--camper);font-weight:700;">🔁 Staat al op Plek ${escapeHtml(displayTag(existingMatches[0].spot, existingMatches[0].tagPrefix))} — ${escapeHtml(existingMatches[0].warehouse.name)}. Deze klant hoeft niet opnieuw geplaatst te worden.</div>` : ''}
           </div>
           <div class="agenda-actions"></div>
         </div>
       `;
       const actionsEl = card.querySelector('.agenda-actions');
-      const placeBtn = document.createElement('button');
-      placeBtn.className = 'btn small';
-      placeBtn.textContent = 'Plaats in loods';
-      placeBtn.addEventListener('click', () => openPlaceCustomerSearchModal(d));
-      actionsEl.appendChild(placeBtn);
+
+      if(alreadyPlaced){
+        const markBtn = document.createElement('button');
+        markBtn.className = 'btn small';
+        markBtn.textContent = 'Markeer als verwerkt';
+        markBtn.addEventListener('click', () => {
+          contractDb.collection('aanvragen').doc(d.id).update({ geplaatstInStorageSites: true })
+            .catch((err) => console.error('Kon aanvraag niet markeren als verwerkt', err));
+        });
+        actionsEl.appendChild(markBtn);
+
+        const gotoBtn = document.createElement('button');
+        gotoBtn.className = 'btn ghost small';
+        gotoBtn.textContent = 'Ga naar plek';
+        gotoBtn.addEventListener('click', () => {
+          state.activeWarehouseId = existingMatches[0].warehouse.id;
+          showNieuweKlanten = false;
+          render();
+        });
+        actionsEl.appendChild(gotoBtn);
+      }else{
+        const placeBtn = document.createElement('button');
+        placeBtn.className = 'btn small';
+        placeBtn.textContent = 'Plaats in loods';
+        placeBtn.addEventListener('click', () => openPlaceCustomerSearchModal(d));
+        actionsEl.appendChild(placeBtn);
+      }
 
       const removeBtn = document.createElement('button');
       removeBtn.className = 'btn ghost small';
