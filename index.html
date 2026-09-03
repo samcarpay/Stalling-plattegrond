@@ -3272,6 +3272,14 @@
         <label>Positie deur op het pad</label>
         <div id="doorWrap">${doorChipHtml()}</div>
       </div>
+      <div class="field" id="swapField" style="${layout==='single'?'display:none;':''}">
+        <label>Links en rechts staan verwisseld?</label>
+        <button type="button" class="btn ghost" id="whSwapBtn">⇄ Verwissel links en rechts</button>
+        <div style="font-size:.78rem;color:var(--ink-soft);margin-top:6px;">
+          Alle plekken (met de klanten die er al staan) die nu bij "links" horen worden "rechts",
+          en andersom — direct doorgevoerd, ook zonder op Opslaan te klikken.
+        </div>
+      </div>
       <div class="modal-actions">
         <button class="btn ghost" id="whCancelBtn">Annuleren</button>
         <button class="btn" id="whSaveBtn">Opslaan</button>
@@ -3289,6 +3297,7 @@
           document.getElementById('layoutWrap').innerHTML = layoutChipHtml();
           bindLayoutChips();
           document.getElementById('doorField').style.display = layout === 'single' ? 'none' : '';
+          document.getElementById('swapField').style.display = layout === 'single' ? 'none' : '';
         });
       });
     }
@@ -3303,6 +3312,31 @@
     }
     bindLayoutChips();
     bindDoorChips();
+
+    // Swaps the two sides of the aisle entirely — every row, spot and
+    // occupant currently filed under "links" moves to "rechts" and vice
+    // versa. The on-screen tag letter (L/R) is derived purely from which
+    // array a row lives in (see autoTag()/displayTag()), so reassigning
+    // the arrays is all that's needed to flip every label at once. The
+    // door marker is flipped along with it, since "links"/"rechts" there
+    // describes the same physical aisle using the same (now-corrected)
+    // convention.
+    document.getElementById('whSwapBtn').addEventListener('click', () => {
+      confirmAction(
+        'Links en rechts verwisselen?',
+        `Alle plekken die nu bij "links" horen worden "rechts" (en omgekeerd) in "${w.name}" — inclusief de klanten die er al staan. Dit geldt alleen voor deze ene loods. U kunt dit terugzetten door nogmaals te verwisselen.`,
+        () => {
+          const tmp = w.left;
+          w.left = w.right;
+          w.right = tmp;
+          if(w.aisleDoor === 'left') w.aisleDoor = 'right';
+          else if(w.aisleDoor === 'right') w.aisleDoor = 'left';
+          render();
+          save();
+        },
+        'Verwisselen'
+      );
+    });
 
     const finish = (shouldSave) => {
       if(shouldSave){
@@ -4178,7 +4212,7 @@
   }
 
   // ---------- reusable confirm dialog for destructive actions ----------
-  function confirmAction(title, message, onConfirm){
+  function confirmAction(title, message, onConfirm, confirmLabel){
     const overlay = document.getElementById('overlay');
     const body = document.getElementById('modalBody');
     body.className = 'modal';
@@ -4187,7 +4221,7 @@
       <div class="sub">${escapeHtml(message)}</div>
       <div class="modal-actions">
         <button class="btn ghost" id="confirmCancelBtn">Annuleren</button>
-        <button class="btn danger" id="confirmYesBtn">Verwijderen</button>
+        <button class="btn danger" id="confirmYesBtn">${escapeHtml(confirmLabel || 'Verwijderen')}</button>
       </div>
     `;
     overlay.classList.add('show');
