@@ -326,6 +326,11 @@
     background:var(--paper-line);color:var(--ink-soft);font-size:11px;font-weight:700;
     padding:1px 8px;border-radius:10px;text-transform:none;letter-spacing:0;
   }
+  .agenda-week-badges{display:flex;align-items:center;gap:6px;}
+  .agenda-week-new{
+    background:var(--car);color:#fff;font-size:10px;font-weight:700;
+    padding:1px 8px;border-radius:10px;text-transform:none;letter-spacing:0;
+  }
   .overview-table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
   .overview-table th{
     text-align:left;font-family:var(--font-display);font-size:10.5px;color:var(--ink-soft);
@@ -2292,6 +2297,7 @@
         const endDate = new Date(wk.monday);
         endDate.setDate(endDate.getDate() + 6);
         const isExpanded = expandedWeekKeys.has(key);
+        const newCount = wk.items.filter(a => !a.linked && a.status !== 'done').length;
 
         const section = document.createElement('div');
         section.className = 'overview-section';
@@ -2299,7 +2305,7 @@
 
         const headerBtn = document.createElement('button');
         headerBtn.className = 'agenda-week-header';
-        headerBtn.innerHTML = `<span>${isExpanded ? '▾' : '▸'} Week van ${wk.monday.toLocaleDateString()} – ${endDate.toLocaleDateString()}</span><span class="agenda-week-count">${wk.items.length}</span>`;
+        headerBtn.innerHTML = `<span>${isExpanded ? '▾' : '▸'} Week van ${wk.monday.toLocaleDateString()} – ${endDate.toLocaleDateString()}</span><span class="agenda-week-badges">${newCount ? `<span class="agenda-week-new">${newCount} nieuw</span>` : ''}<span class="agenda-week-count">${wk.items.length}</span></span>`;
         headerBtn.addEventListener('click', () => {
           if(expandedWeekKeys.has(key)) expandedWeekKeys.delete(key);
           else expandedWeekKeys.add(key);
@@ -3156,10 +3162,34 @@
     el.innerHTML = '';
 
     if(hasFirebaseSync && typeof APPOINTMENTS_PATH !== 'undefined' && APPOINTMENTS_PATH){
-      const pending = appointments.filter(a => !a.linked && a.status !== 'done').length;
+      const pendingAppointments = appointments.filter(a => !a.linked && a.status !== 'done');
+      const pending = pendingAppointments.length;
+      // Show which week the soonest new request falls in, so staff can tell
+      // at a glance whether it needs attention now or can wait — without
+      // having to open the Agenda tab first.
+      let weekLabel = '';
+      if(pending){
+        const mondays = pendingAppointments
+          .map(a => getWeekStart(a.date))
+          .filter(Boolean)
+          .sort((a, b) => a - b);
+        if(mondays.length){
+          const soonest = mondays[0];
+          const todayMonday = getWeekStart(new Date().toISOString().slice(0,10));
+          const nextMonday = todayMonday ? new Date(todayMonday) : null;
+          if(nextMonday) nextMonday.setDate(nextMonday.getDate() + 7);
+          if(todayMonday && soonest.getTime() === todayMonday.getTime()){
+            weekLabel = 'deze week';
+          } else if(nextMonday && soonest.getTime() === nextMonday.getTime()){
+            weekLabel = 'volgende week';
+          } else {
+            weekLabel = `${soonest.getDate()} ${DUTCH_MONTH_NAMES[soonest.getMonth()].slice(0,3)}`;
+          }
+        }
+      }
       const agendaTab = document.createElement('div');
       agendaTab.className = 'wh-tab' + (showAgenda ? ' active' : '');
-      agendaTab.innerHTML = `<span class="wh-tab-name-text">📅 Agenda</span>` + (pending ? `<span class="wh-count">${pending} nieuw</span>` : '');
+      agendaTab.innerHTML = `<span class="wh-tab-name-text">📅 Agenda</span>` + (pending ? `<span class="wh-count">${pending} nieuw${weekLabel ? ' · ' + weekLabel : ''}</span>` : '');
       agendaTab.addEventListener('click', () => {
         showAgenda = true;
         showOverview = false;
