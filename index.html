@@ -2001,6 +2001,33 @@
   // in sync automatically instead of drifting apart over time.
   let expandedCardIds = new Set(); // which appointment cards are tapped open; persists across re-renders
 
+  function looksLikeEmail(s){
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((s || '').trim());
+  }
+
+  // Builds a mailto: link pre-filled with a reply to this appointment,
+  // quoting the customer's own note when there is one. This opens
+  // whatever mail app is set as default (Outlook, Mail, etc.) with the
+  // message ready to review and send by hand — nothing is sent
+  // automatically, unlike the EmailJS confirmation the booking widget sends.
+  function buildMailtoLink(a){
+    const to = (a.contact || '').trim();
+    const subjectParts = ['Ophaalafspraak'];
+    if(a.vehicleDesc) subjectParts.push(`object ${a.vehicleDesc}`);
+    const subject = subjectParts.join(' — ');
+    const firstName = (a.name || '').trim().split(/\s+/)[0] || '';
+    let body = `Beste ${firstName || 'klant'},\n\n`;
+    if(a.notes && a.notes.trim()){
+      const context = [a.vehicleDesc ? `object ${a.vehicleDesc}` : '', a.date ? `op ${formatDutchDate(a.date)}` : '']
+        .filter(Boolean).join(' ');
+      body += `Naar aanleiding van uw opmerking bij de ophaalaanvraag${context ? ' (' + context + ')' : ''}:\n"${a.notes.trim()}"\n\n\n`;
+    } else {
+      body += '\n\n';
+    }
+    body += 'Met vriendelijke groet,\nZwartendijk Stalling';
+    return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
+
   function buildActiveAppointmentCard(a){
     const info = findLinkedInfo(a.linked);
     const suggestion = !info ? findObjectNummerMatch(a) : null;
@@ -2044,6 +2071,15 @@
       render();
     });
     const actionsEl = card.querySelector('.agenda-actions');
+    if(looksLikeEmail(a.contact)){
+      const mailBtn = document.createElement('a');
+      mailBtn.className = 'btn ghost small';
+      mailBtn.style.cssText = 'text-decoration:none;display:inline-block;';
+      mailBtn.textContent = '✉️ E-mail beantwoorden';
+      mailBtn.href = buildMailtoLink(a);
+      mailBtn.addEventListener('click', (e) => e.stopPropagation());
+      actionsEl.appendChild(mailBtn);
+    }
     if(info){
       const awayBtn = document.createElement('button');
       awayBtn.className = 'btn ghost small';
