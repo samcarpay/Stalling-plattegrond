@@ -3329,7 +3329,23 @@
     // screen column flips (see sideLabelInfo(), used everywhere a side is
     // displayed, searched, or printed).
     document.getElementById('whSwapBtn').addEventListener('click', () => {
+      const oldLeftTag = sideLabelInfo(w, 'left').tag;
+      const oldRightTag = sideLabelInfo(w, 'right').tag;
       w.labelsSwapped = !w.labelsSwapped;
+      const newLeftTag = sideLabelInfo(w, 'left').tag;
+      const newRightTag = sideLabelInfo(w, 'right').tag;
+
+      // The plain auto-generated tag (e.g. "L2") already updates on its
+      // own, since it's computed fresh from sideLabelInfo() every render —
+      // only custom-typed labels (e.g. "L2-1", "L2-2" on a split bay) need
+      // to be rewritten here.
+      w.left.forEach(row => row.spots.forEach(spot => {
+        if(spot.label) spot.label = relabelCustomSpotLabel(spot.label, oldLeftTag, newLeftTag);
+      }));
+      w.right.forEach(row => row.spots.forEach(spot => {
+        if(spot.label) spot.label = relabelCustomSpotLabel(spot.label, oldRightTag, newRightTag);
+      }));
+
       document.getElementById('whSwapBtn').textContent = w.labelsSwapped
         ? '⇄ Links en rechts weer terugzetten'
         : '⇄ Verwissel links en rechts';
@@ -3538,6 +3554,21 @@
 
   function autoTag(tagPrefix, seq){
     return `${tagPrefix}${seq}`;
+  }
+  // A spot with a custom label (typed into the "Plek label" field — e.g.
+  // "L2-1"/"L2-2" for a bay someone split in two) doesn't recompute
+  // automatically the way the plain auto-generated "L2"/"R2" tag does,
+  // since it's just free text. Swapping links/rechts should still fix it
+  // up when it clearly follows the tag: rewrite the leading letter only
+  // when the label starts with exactly the OLD prefix followed by a digit
+  // or dash, so unrelated custom text (a name, a note) is left untouched.
+  function relabelCustomSpotLabel(label, oldTag, newTag){
+    const trimmed = (label || '').trim();
+    if(!trimmed || !oldTag || oldTag === newTag) return label;
+    if(trimmed.startsWith(oldTag) && /^[0-9-]/.test(trimmed.slice(oldTag.length))){
+      return newTag + trimmed.slice(oldTag.length);
+    }
+    return label;
   }
   function displayTag(spot, tagPrefix){
     return (spot.label && spot.label.trim()) ? spot.label.trim() : autoTag(tagPrefix, spot.seq);
