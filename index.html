@@ -2639,6 +2639,13 @@
       });
     });
 
+    // Not-yet-confirmed customers ("Komt dit jaar terug" still unchecked)
+    // rank above already-confirmed ones, so the ones still needing
+    // follow-up stay at the top of the list as you work through it.
+    // Array.prototype.sort() is stable, so within each group the original
+    // warehouse/spot order is kept.
+    rows.sort((a, b) => (a.occupant.komtDitJaar ? 1 : 0) - (b.occupant.komtDitJaar ? 1 : 0));
+
     const intro = document.createElement('div');
     intro.className = 'print-empty';
     intro.style.cssText = 'text-align:left;padding:0 0 16px;color:var(--ink-soft);font-size:12.5px;';
