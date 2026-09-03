@@ -1023,6 +1023,10 @@
       if(typeof w.purpose !== 'string') w.purpose = '';
       if(w.layout !== 'single' && w.layout !== 'aisle') w.layout = 'aisle';
       if(w.aisleDoor !== 'left' && w.aisleDoor !== 'right') w.aisleDoor = null;
+      // Relabels "links"/"rechts" for this warehouse without moving any
+      // row/spot/customer between the two screen columns — see
+      // sideLabelInfo().
+      if(typeof w.labelsSwapped !== 'boolean') w.labelsSwapped = false;
       [...w.left, ...w.right].forEach(row => {
         row.spots.forEach((s, i) => {
           if(typeof s.seq !== 'number') s.seq = i + 1;
@@ -2392,7 +2396,7 @@
     state.warehouses.forEach(w => {
       if(w.id === excludeWarehouseId) return;
       const hasAisle = w.layout !== 'single';
-      const sides = hasAisle ? [['left','L'],['right','R']] : [['left','']];
+      const sides = warehouseSides(w);
       sides.forEach(([key, tagPrefix]) => {
         w[key].forEach(row => {
           row.spots.forEach(spot => {
@@ -2425,7 +2429,7 @@
     const allRows = [];
     state.warehouses.forEach(w => {
       const hasAisle = w.layout !== 'single';
-      const sides = hasAisle ? [['left','L'],['right','R']] : [['left','']];
+      const sides = warehouseSides(w);
       sides.forEach(([key, tagPrefix]) => {
         w[key].forEach(row => {
           row.spots.forEach(spot => {
@@ -2625,7 +2629,7 @@
     const rows = [];
     winterWarehouses.forEach(w => {
       const hasAisle = w.layout !== 'single';
-      const sides = hasAisle ? [['left','L'],['right','R']] : [['left','']];
+      const sides = warehouseSides(w);
       sides.forEach(([key, tagPrefix]) => {
         w[key].forEach(row => {
           row.spots.forEach(spot => {
@@ -2838,7 +2842,7 @@
     const results = [];
     state.warehouses.forEach(w => {
       const hasAisle = w.layout !== 'single';
-      const sides = hasAisle ? [['left','L'],['right','R']] : [['left','']];
+      const sides = warehouseSides(w);
       sides.forEach(([key, tagPrefix]) => {
         w[key].forEach(row => {
           row.spots.forEach(spot => {
@@ -2868,7 +2872,7 @@
     const results = [];
     state.warehouses.forEach(w => {
       const hasAisle = w.layout !== 'single';
-      const sides = hasAisle ? [['left','L'],['right','R']] : [['left','']];
+      const sides = warehouseSides(w);
       sides.forEach(([key, tagPrefix]) => {
         w[key].forEach(row => {
           row.spots.forEach(spot => {
@@ -3245,11 +3249,16 @@
       `;
     }
     function doorChipHtml(){
+      // Labels reflect w.labelsSwapped, but data-door stays tied to the
+      // physical/screen side ('left'/'right') — swapping the labels never
+      // changes what data-door="left" means, only what word is shown for it.
+      const leftName = sideLabelInfo(w, 'left').name.toLowerCase();
+      const rightName = sideLabelInfo(w, 'right').name.toLowerCase();
       return `
         <div class="type-row" id="doorRow">
           <div class="type-chip ${!aisleDoor?'active':''}" data-door="">Geen deurmarkering</div>
-          <div class="type-chip ${aisleDoor==='left'?'active':''}" data-door="left">Deur links</div>
-          <div class="type-chip ${aisleDoor==='right'?'active':''}" data-door="right">Deur rechts</div>
+          <div class="type-chip ${aisleDoor==='left'?'active':''}" data-door="left">Deur ${leftName}</div>
+          <div class="type-chip ${aisleDoor==='right'?'active':''}" data-door="right">Deur ${rightName}</div>
         </div>
       `;
     }
@@ -3274,10 +3283,11 @@
       </div>
       <div class="field" id="swapField" style="${layout==='single'?'display:none;':''}">
         <label>Links en rechts staan verwisseld?</label>
-        <button type="button" class="btn ghost" id="whSwapBtn">⇄ Verwissel links en rechts</button>
+        <button type="button" class="btn ghost" id="whSwapBtn">${w.labelsSwapped ? '⇄ Links en rechts weer terugzetten' : '⇄ Verwissel links en rechts'}</button>
         <div style="font-size:.78rem;color:var(--ink-soft);margin-top:6px;">
-          Alle plekken (met de klanten die er al staan) die nu bij "links" horen worden "rechts",
-          en andersom — direct doorgevoerd, ook zonder op Opslaan te klikken.
+          Verandert alleen hoe deze loods "links" en "rechts" noemt (labels, zoeken, print) —
+          er verplaatst geen enkele plek of klant naar de andere kant. Direct doorgevoerd, ook
+          zonder op Opslaan te klikken.
         </div>
       </div>
       <div class="modal-actions">
@@ -3313,29 +3323,20 @@
     bindLayoutChips();
     bindDoorChips();
 
-    // Swaps the two sides of the aisle entirely — every row, spot and
-    // occupant currently filed under "links" moves to "rechts" and vice
-    // versa. The on-screen tag letter (L/R) is derived purely from which
-    // array a row lives in (see autoTag()/displayTag()), so reassigning
-    // the arrays is all that's needed to flip every label at once. The
-    // door marker is flipped along with it, since "links"/"rechts" there
-    // describes the same physical aisle using the same (now-corrected)
-    // convention.
+    // Relabels "links"/"rechts" for this warehouse only — w.left/w.right
+    // themselves (and every row, spot and customer inside them) are left
+    // exactly where they are; only the word/tag-letter shown for each
+    // screen column flips (see sideLabelInfo(), used everywhere a side is
+    // displayed, searched, or printed).
     document.getElementById('whSwapBtn').addEventListener('click', () => {
-      confirmAction(
-        'Links en rechts verwisselen?',
-        `Alle plekken die nu bij "links" horen worden "rechts" (en omgekeerd) in "${w.name}" — inclusief de klanten die er al staan. Dit geldt alleen voor deze ene loods. U kunt dit terugzetten door nogmaals te verwisselen.`,
-        () => {
-          const tmp = w.left;
-          w.left = w.right;
-          w.right = tmp;
-          if(w.aisleDoor === 'left') w.aisleDoor = 'right';
-          else if(w.aisleDoor === 'right') w.aisleDoor = 'left';
-          render();
-          save();
-        },
-        'Verwisselen'
-      );
+      w.labelsSwapped = !w.labelsSwapped;
+      document.getElementById('whSwapBtn').textContent = w.labelsSwapped
+        ? '⇄ Links en rechts weer terugzetten'
+        : '⇄ Verwissel links en rechts';
+      document.getElementById('doorWrap').innerHTML = doorChipHtml();
+      bindDoorChips();
+      render();
+      save();
     });
 
     const finish = (shouldSave) => {
@@ -3444,10 +3445,13 @@
     plan.className = 'plan';
 
     if(hasAisle){
+      const rightInfo = sideLabelInfo(w, 'right');
+      const leftInfo = sideLabelInfo(w, 'left');
+
       // right side, farthest row first so it sits furthest from the aisle bar
       [...w.right].reverse().forEach((row, i) => {
         const realIdx = w.right.length - 1 - i;
-        plan.appendChild(renderRowBlock(row, 'Rechts', realIdx, w.right.length, 'right', 'R', true));
+        plan.appendChild(renderRowBlock(row, rightInfo.name, realIdx, w.right.length, 'right', rightInfo.tag, true));
       });
 
       const aisle = document.createElement('div');
@@ -3460,7 +3464,7 @@
 
       // left side, row 1 nearest the aisle first
       w.left.forEach((row, i) => {
-        plan.appendChild(renderRowBlock(row, 'Links', i, w.left.length, 'left', 'L', true));
+        plan.appendChild(renderRowBlock(row, leftInfo.name, i, w.left.length, 'left', leftInfo.tag, true));
       });
     } else {
       // outdoor / single-row layout — no aisle, no left/right split
@@ -3510,6 +3514,26 @@
     block.appendChild(lane);
 
     return block;
+  }
+
+  // A physical side of the aisle (the 'left' screen column / the 'right'
+  // screen column — i.e. which of w.left / w.right an array lives in)
+  // maps to a display name and tag-prefix letter. Normally left→Links/L
+  // and right→Rechts/R, but a warehouse can have that flipped via
+  // w.labelsSwapped, for when the real-world links/rechts turned out to
+  // be the other way round from how the two columns happen to render on
+  // screen. This only changes labels/tags/search/print text — it never
+  // moves any row, spot, or customer between the two columns.
+  function sideLabelInfo(w, sideKey){
+    const swapped = !!(w && w.labelsSwapped);
+    if(sideKey === 'left') return swapped ? { name:'Rechts', tag:'R' } : { name:'Links', tag:'L' };
+    return swapped ? { name:'Links', tag:'L' } : { name:'Rechts', tag:'R' };
+  }
+  // The [[sideKey, tagPrefix], ...] list used throughout search/list/print
+  // code to iterate both sides of a warehouse with the right tag letter.
+  function warehouseSides(w){
+    if(w.layout === 'single') return [['left','']];
+    return [['left', sideLabelInfo(w,'left').tag], ['right', sideLabelInfo(w,'right').tag]];
   }
 
   function autoTag(tagPrefix, seq){
@@ -3584,7 +3608,7 @@
     for(const w of state.warehouses){
       if(w.id === excludeWarehouseId) continue;
       const hasAisle = w.layout !== 'single';
-      const sides = hasAisle ? [['left','L'],['right','R']] : [['left','']];
+      const sides = warehouseSides(w);
       for(const [key, tagPrefix] of sides){
         for(const row of w[key]){
           for(const s of row.spots){
@@ -4642,7 +4666,7 @@
       const totalBays = warehouseSpots(w).length;
 
       const doorNotes = [];
-      if(w.aisleDoor) doorNotes.push(`deur op pad (${w.aisleDoor === 'left' ? 'links' : 'rechts'})`);
+      if(w.aisleDoor) doorNotes.push(`deur op pad (${sideLabelInfo(w, w.aisleDoor).name.toLowerCase()})`);
       const doorBays = warehouseRows(w).flatMap(r => r.spots).filter(s => s.isDoor && !s.removed);
       if(doorBays.length) doorNotes.push(`${doorBays.length} deur${doorBays.length===1?'':'en'} op plek`);
 
@@ -4652,13 +4676,15 @@
       if(totalBays === 0 && doorBays.length === 0){
         html += `<div class="print-empty">Nog geen plekken in deze loods.</div>`;
       } else if(hasAisle){
+        const rightInfo = sideLabelInfo(w, 'right');
+        const leftInfo = sideLabelInfo(w, 'left');
         [...w.right].reverse().forEach((row, i) => {
           const realIdx = w.right.length - 1 - i;
-          html += printRowHtml(row, `Rechts · rij ${realIdx+1}`, 'R');
+          html += printRowHtml(row, `${rightInfo.name} · rij ${realIdx+1}`, rightInfo.tag);
         });
-        html += `<div class="print-aisle">Pad${w.aisleDoor ? ` — deur ${w.aisleDoor === 'left' ? 'links' : 'rechts'}` : ''}</div>`;
+        html += `<div class="print-aisle">Pad${w.aisleDoor ? ` — deur ${sideLabelInfo(w, w.aisleDoor).name.toLowerCase()}` : ''}</div>`;
         w.left.forEach((row, i) => {
-          html += printRowHtml(row, `Links · rij ${i+1}`, 'L');
+          html += printRowHtml(row, `${leftInfo.name} · rij ${i+1}`, leftInfo.tag);
         });
       } else {
         w.left.forEach((row, i) => {
@@ -4774,7 +4800,7 @@
     const results = [];
     state.warehouses.forEach(w => {
       const hasAisle = w.layout !== 'single';
-      const sides = hasAisle ? [['left','L'],['right','R']] : [['left','']];
+      const sides = warehouseSides(w);
       sides.forEach(([key, tagPrefix]) => {
         w[key].forEach(row => {
           row.spots.forEach(spot => {
@@ -4799,7 +4825,9 @@
     state.warehouses.forEach(w => {
       if(filters.warehouseId !== 'all' && w.id !== filters.warehouseId) return;
       const hasAisle = w.layout !== 'single';
-      const sides = hasAisle ? [['left','Links','L'],['right','Rechts','R']] : [['left','Rij','']];
+      const sides = hasAisle
+        ? [['left', sideLabelInfo(w,'left').name, sideLabelInfo(w,'left').tag], ['right', sideLabelInfo(w,'right').name, sideLabelInfo(w,'right').tag]]
+        : [['left','Rij','']];
       sides.forEach(([key, sideName, tagPrefix]) => {
         w[key].forEach((row, rowIdx) => {
           row.spots.forEach((spot, sIdx) => {
