@@ -1045,6 +1045,11 @@
             if(typeof o.objectNummer !== 'string') o.objectNummer = '';
             if(typeof o.email !== 'string') o.email = '';
             if(typeof o.phone !== 'string') o.phone = '';
+            // Tracks, per occupant, whether they've confirmed they're
+            // returning this storage season — used on the "Klanten in
+            // winterstalling" tab so staff can check off returning
+            // customers rather than re-checking manually every year.
+            if(typeof o.komtDitJaar !== 'boolean') o.komtDitJaar = false;
           });
         });
       });
@@ -2672,6 +2677,11 @@
               ? `<div class="agenda-sub" style="color:var(--accent-dark, var(--ink));font-weight:600;">Ook bezet in: ${elsewhere.map(m => `${escapeHtml(m.warehouse.name)} · plek ${escapeHtml(displayTag(m.spot, m.tagPrefix))}`).join(', ')}</div>`
               : (o.objectNummer ? `<div class="agenda-sub" style="color:var(--ink-soft);">Nu geen andere plek met dit object nummer.</div>` : '')
             }
+            <label class="agenda-sub" style="display:flex;align-items:center;gap:6px;font-weight:700;cursor:pointer;margin-top:8px;">
+              <input type="checkbox" class="ws-komt-toggle" ${o.komtDitJaar ? 'checked' : ''} style="width:15px;height:15px;flex-shrink:0;" />
+              Komt dit jaar terug
+            </label>
+            <textarea class="ws-notitie" rows="2" placeholder="Notitie…" style="width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;font-family:inherit;resize:vertical;background:#fdfcf9;">${escapeHtml(o.notes || '')}</textarea>
           </div>
           <div class="agenda-actions"></div>
         </div>
@@ -2691,6 +2701,23 @@
         }, 60);
       });
       actionsEl.appendChild(jumpBtn);
+
+      // Edited directly here (rather than needing to open the full bay
+      // modal) since this whole page exists to let staff quickly work
+      // through the winter-storage list — o is the actual occupant object
+      // inside `state`, so mutating it and calling save() is enough.
+      card.querySelector('.ws-komt-toggle').addEventListener('change', (e) => {
+        o.komtDitJaar = e.target.checked;
+        save(); render();
+      });
+      const notitieEl = card.querySelector('.ws-notitie');
+      notitieEl.addEventListener('blur', () => {
+        if(o.notes !== notitieEl.value){
+          o.notes = notitieEl.value;
+          save();
+        }
+      });
+
       section.appendChild(card);
     });
 
@@ -3898,8 +3925,8 @@
     const auto = autoTag(tagPrefix, spot.seq);
 
     let occDraft = (spot.occupants && spot.occupants.length)
-      ? spot.occupants.map(o => ({ name:o.name||'', reg:o.reg||'', since:o.since||'', notes:o.notes||'', away:!!o.away, objectNummer:o.objectNummer||'', email:o.email||'', phone:o.phone||'', _wasAway:!!o.away }))
-      : [{ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'', email:'', phone:'', _wasAway:false, ...(prefillOccupant || {}) }];
+      ? spot.occupants.map(o => ({ name:o.name||'', reg:o.reg||'', since:o.since||'', notes:o.notes||'', away:!!o.away, komtDitJaar:!!o.komtDitJaar, objectNummer:o.objectNummer||'', email:o.email||'', phone:o.phone||'', _wasAway:!!o.away }))
+      : [{ name:'', reg:'', since:'', notes:'', away:false, komtDitJaar:false, objectNummer:'', email:'', phone:'', _wasAway:false, ...(prefillOccupant || {}) }];
 
     body.innerHTML = `
       <h3>${isEditing ? 'Plek bewerken' : 'Plek toevoegen / bewerken'}</h3>
@@ -3974,6 +4001,7 @@
           <input type="text" class="occ-objnum" placeholder="Object nummer (komt overeen met aanvragen)" value="${escapeAttr(o.objectNummer)}" style="margin-bottom:6px;" />
           <input type="text" class="occ-notes" placeholder="Notities" value="${escapeAttr(o.notes)}" />
           <label class="occ-away-toggle"><input type="checkbox" class="occ-away" ${o.away?'checked':''} /> Momenteel weg (tijdelijk opgehaald, plek blijft gereserveerd)</label>
+          <label class="occ-away-toggle"><input type="checkbox" class="occ-komt-dit-jaar" ${o.komtDitJaar?'checked':''} /> Komt dit jaar terug (winterstalling)</label>
         </div>
       `).join('');
       listEl.querySelectorAll('.occ-row').forEach(rowEl => {
@@ -3986,9 +4014,10 @@
         rowEl.querySelector('.occ-objnum').addEventListener('input', (e) => { occDraft[idx].objectNummer = e.target.value; });
         rowEl.querySelector('.occ-notes').addEventListener('input', (e) => { occDraft[idx].notes = e.target.value; });
         rowEl.querySelector('.occ-away').addEventListener('change', (e) => { occDraft[idx].away = e.target.checked; });
+        rowEl.querySelector('.occ-komt-dit-jaar').addEventListener('change', (e) => { occDraft[idx].komtDitJaar = e.target.checked; });
         rowEl.querySelector('.occ-remove').addEventListener('click', () => {
           occDraft.splice(idx, 1);
-          if(occDraft.length === 0) occDraft.push({ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'', email:'', phone:'', _wasAway:false });
+          if(occDraft.length === 0) occDraft.push({ name:'', reg:'', since:'', notes:'', away:false, komtDitJaar:false, objectNummer:'', email:'', phone:'', _wasAway:false });
           renderOccList();
         });
         const moveBtn = rowEl.querySelector('.occ-move');
@@ -4010,7 +4039,7 @@
     renderOccList();
 
     document.getElementById('addOccBtn').addEventListener('click', () => {
-      occDraft.push({ name:'', reg:'', since:'', notes:'', away:false, objectNummer:'', email:'', phone:'', _wasAway:false });
+      occDraft.push({ name:'', reg:'', since:'', notes:'', away:false, komtDitJaar:false, objectNummer:'', email:'', phone:'', _wasAway:false });
       renderOccList();
     });
 
@@ -4093,7 +4122,7 @@
         spot.type = selectedType;
         spot.length = length;
         spot.occupants = occDraft
-          .map(o => ({ name:o.name.trim(), reg:o.reg.trim(), since:o.since.trim(), notes:o.notes.trim(), away:!!o.away, objectNummer:o.objectNummer.trim(), email:o.email.trim(), phone:o.phone.trim() }))
+          .map(o => ({ name:o.name.trim(), reg:o.reg.trim(), since:o.since.trim(), notes:o.notes.trim(), away:!!o.away, komtDitJaar:!!o.komtDitJaar, objectNummer:o.objectNummer.trim(), email:o.email.trim(), phone:o.phone.trim() }))
           .filter(o => o.name || o.reg || o.notes || o.objectNummer || o.email || o.phone);
 
         // Anyone newly checked "away" right here (not via an existing
