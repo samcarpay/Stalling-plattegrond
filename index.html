@@ -1164,7 +1164,7 @@
   }
 
   // ---------- agenda / appointments (from the public booking widget) ----------
-  let appointments = [];       // [{id, name, contact, vehicleDesc, date, notes, createdAt, linked:{warehouseId,spotId}|null, status}]
+  let appointments = [];       // [{id, name, contact, vehicleDesc, date, time, notes, createdAt, linked:{warehouseId,spotId}|null, status}]
   let appointmentsRef = null;
   let showAgenda = false;      // UI-only, not persisted
 
@@ -1786,6 +1786,13 @@
     if(isNaN(d.getTime())) return dateStr;
     return `${DUTCH_DAY_NAMES[d.getDay()]} ${d.getDate()} ${DUTCH_MONTH_NAMES[d.getMonth()]}`;
   }
+  // Date (+ optional time) for an appointment, formatted consistently
+  // everywhere it's shown to staff.
+  function formatApptWhen(a){
+    const base = a.date ? formatDutchDate(a.date) : '';
+    if(!base) return '';
+    return a.time ? `${base}, ${a.time}` : base;
+  }
 
   function getWeekStart(dateStr){
     const d = new Date(dateStr + 'T00:00:00');
@@ -2026,7 +2033,7 @@
     // nothing extra is appended in that case.
     let body = `Beste ${firstName || 'klant'},\n\n`;
     if(a.notes && a.notes.trim()){
-      const context = [a.vehicleDesc ? `object ${a.vehicleDesc}` : '', a.date ? `op ${formatDutchDate(a.date)}` : '']
+      const context = [a.vehicleDesc ? `object ${a.vehicleDesc}` : '', a.date ? `op ${formatApptWhen(a)}` : '']
         .filter(Boolean).join(' ');
       body += `Naar aanleiding van uw opmerking bij de ophaalaanvraag${context ? ' (' + context + ')' : ''}:\n"${a.notes.trim()}"\n\n`;
     }
@@ -2050,7 +2057,7 @@
     card.innerHTML = `
       <div class="agenda-card-top" style="cursor:pointer;">
         <div>
-          <div class="agenda-date">${a.date ? escapeHtml(formatDutchDate(a.date)) : '(geen datum opgegeven)'}${info ? '<span class="agenda-badge linked">Gekoppeld</span>' : '<span class="agenda-badge needs">Nog koppelen</span>'}</div>
+          <div class="agenda-date">${a.date ? escapeHtml(formatApptWhen(a)) : '(geen datum opgegeven)'}${info ? '<span class="agenda-badge linked">Gekoppeld</span>' : '<span class="agenda-badge needs">Nog koppelen</span>'}</div>
           <div class="agenda-name">${escapeHtml(a.name || 'Naam onbekend')}</div>
           <div class="agenda-sub">${escapeHtml(compactSub)}${away ? ' · <strong style="color:var(--ink);">momenteel weg</strong>' : ''}</div>
         </div>
@@ -2236,7 +2243,7 @@
         const matches = active.filter(a => {
           const hay = [a.name, a.vehicleDesc, a.contact, a.notes].filter(Boolean).join(' ').toLowerCase();
           return hay.includes(q);
-        }).sort((a,b) => (a.date||'').localeCompare(b.date||''));
+        }).sort((a,b) => `${a.date||''} ${a.time||''}`.localeCompare(`${b.date||''} ${b.time||''}`));
 
         const section = document.createElement('div');
         section.className = 'overview-section';
@@ -2293,7 +2300,7 @@
 
       weekKeys.forEach(key => {
         const wk = weeks[key];
-        wk.items.sort((a,b) => (a.date||'').localeCompare(b.date||''));
+        wk.items.sort((a,b) => `${a.date||''} ${a.time||''}`.localeCompare(`${b.date||''} ${b.time||''}`));
         const endDate = new Date(wk.monday);
         endDate.setDate(endDate.getDate() + 6);
         const isExpanded = expandedWeekKeys.has(key);
@@ -2384,7 +2391,7 @@
         card.innerHTML = `
           <div class="agenda-card-top">
             <div>
-              <div class="agenda-date">${a.date ? escapeHtml(formatDutchDate(a.date)) : ''}${a.completedAt ? ' · afgerond op ' + new Date(a.completedAt).toLocaleDateString() : ''}</div>
+              <div class="agenda-date">${a.date ? escapeHtml(formatApptWhen(a)) : ''}${a.completedAt ? ' · afgerond op ' + new Date(a.completedAt).toLocaleDateString() : ''}</div>
               <div class="agenda-name">${escapeHtml(a.name || 'Naam onbekend')}</div>
               <div class="agenda-sub">${escapeHtml(a.vehicleDesc || '')}${a.contact ? ' · ' + escapeHtml(a.contact) : ''}</div>
             </div>
@@ -3060,6 +3067,10 @@
         <input type="date" id="naDate" />
       </div>
       <div class="field">
+        <label>Ophaaltijd (optioneel)</label>
+        <input type="time" id="naTime" />
+      </div>
+      <div class="field">
         <label>Notities (optioneel)</label>
         <textarea id="naNotes"></textarea>
       </div>
@@ -3080,6 +3091,7 @@
       const contact = document.getElementById('naContact').value.trim();
       const vehicleDesc = document.getElementById('naVehicle').value.trim();
       const date = document.getElementById('naDate').value;
+      const time = document.getElementById('naTime').value;
       const notes = document.getElementById('naNotes').value.trim();
 
       if(!name || !date){
@@ -3089,7 +3101,7 @@
       if(!appointmentsRef) return;
 
       appointmentsRef.push({
-        name, contact, vehicleDesc, date, notes,
+        name, contact, vehicleDesc, date, time, notes,
         createdAt: Date.now(),
         linked: null,
         status: 'requested',
