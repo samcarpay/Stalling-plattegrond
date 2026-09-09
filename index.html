@@ -993,6 +993,7 @@
       warehouses,
       activeWarehouseId: warehouses[0].id,
       vehicleTypes: JSON.parse(JSON.stringify(DEFAULT_TYPES)),
+      waitlist: [],
     };
   }
 
@@ -1012,6 +1013,9 @@
     if(!loaded.vehicleTypes || typeof loaded.vehicleTypes !== 'object'){
       loaded.vehicleTypes = JSON.parse(JSON.stringify(DEFAULT_TYPES));
     }
+    // Klanten die je alvast wilt vastleggen voordat er een plek voor ze is —
+    // zie renderKlantenPage()'s "Nog te plaatsen" sectie.
+    if(!Array.isArray(loaded.waitlist)) loaded.waitlist = [];
     Object.values(loaded.vehicleTypes).forEach(t => {
       if(typeof t.price !== 'number') t.price = 0;
       if(typeof t.period !== 'string') t.period = 'jaar';
@@ -2524,7 +2528,64 @@
     addBtn.textContent = '+ Nieuwe klant toevoegen';
     addBtn.addEventListener('click', () => openAddCustomerSearchModal());
     toolbarRow.appendChild(addBtn);
+    const addWaitBtn = document.createElement('button');
+    addWaitBtn.className = 'btn ghost small';
+    addWaitBtn.textContent = '+ Klant vastleggen (nog geen plek)';
+    addWaitBtn.title = 'Voor een klant die je alvast wilt vastleggen — je geeft ze later, zodra er een plek vrij is, alsnog een plek.';
+    addWaitBtn.addEventListener('click', () => openAddWaitlistModal());
+    toolbarRow.appendChild(addWaitBtn);
     container.appendChild(toolbarRow);
+
+    // ---- wachtlijst: klanten die alvast zijn vastgelegd maar nog geen plek hebben ----
+    const waitlist = Array.isArray(state.waitlist) ? state.waitlist : [];
+    if(waitlist.length > 0){
+      const waitSection = document.createElement('div');
+      waitSection.className = 'overview-section';
+      waitSection.style.maxWidth = '760px';
+      waitSection.innerHTML = `<h3 class="overview-h">Nog te plaatsen (${waitlist.length})</h3>`;
+      waitlist.forEach(entry => {
+        const card = document.createElement('div');
+        card.className = 'agenda-card needs-action';
+        card.innerHTML = `
+          <div class="agenda-card-top">
+            <div>
+              <div class="agenda-date">${entry.objectNummer ? 'Object ' + escapeHtml(entry.objectNummer) : 'Nog geen object nummer'}</div>
+              <div class="agenda-name">${escapeHtml(entry.name || 'Naam onbekend')}${entry.reg ? ' · ' + escapeHtml(entry.reg) : ''}</div>
+              ${(entry.phone || entry.email) ? `<div class="agenda-sub">${[entry.phone, entry.email].filter(Boolean).map(escapeHtml).join(' · ')}</div>` : ''}
+              ${entry.notes ? `<div class="agenda-sub">${escapeHtml(entry.notes)}</div>` : ''}
+            </div>
+            <div class="agenda-actions"></div>
+          </div>
+        `;
+        const actionsEl = card.querySelector('.agenda-actions');
+
+        const placeBtn = document.createElement('button');
+        placeBtn.className = 'btn small';
+        placeBtn.textContent = 'Plaats in loods';
+        placeBtn.addEventListener('click', () => openPlaceWaitlistSearchModal(entry));
+        actionsEl.appendChild(placeBtn);
+
+        const removeWaitBtn = document.createElement('button');
+        removeWaitBtn.className = 'btn ghost small';
+        removeWaitBtn.textContent = 'Verwijderen';
+        removeWaitBtn.addEventListener('click', () => {
+          confirmAction(
+            'Verwijderen van wachtlijst?',
+            `Dit haalt ${escapeHtml(entry.name || 'deze klant')} van de wachtlijst.`,
+            () => {
+              const idx = state.waitlist.findIndex(x => x.id === entry.id);
+              if(idx !== -1){
+                state.waitlist.splice(idx, 1);
+                render(); save();
+              }
+            }
+          );
+        });
+        actionsEl.appendChild(removeWaitBtn);
+        waitSection.appendChild(card);
+      });
+      container.appendChild(waitSection);
+    }
 
     const countLabel = document.createElement('div');
     countLabel.className = 'sub';
@@ -2665,6 +2726,146 @@
 
     document.getElementById('addCustCancelBtn').addEventListener('click', () => { body.className = 'modal'; closeModal(); });
     overlay.addEventListener('click', (e) => { if(e.target === overlay){ body.className = 'modal'; closeModal(); } }, { once:true });
+  }
+
+  // ---------- wachtlijst: klanten vastleggen vóórdat ze een plek hebben ----------
+  function openAddWaitlistModal(){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal';
+    body.innerHTML = `
+      <h3>Klant vastleggen (nog geen plek)</h3>
+      <div class="sub">Voor een klant die je alvast wilt vastleggen — je geeft ze later, zodra er een plek vrij is, een plek via de knop "Plaats in loods".</div>
+      <div class="field">
+        <label>Naam</label>
+        <input type="text" id="wlName" placeholder="Naam klant" />
+      </div>
+      <div class="field">
+        <label>Kenteken (optioneel)</label>
+        <input type="text" id="wlReg" placeholder="Kenteken" />
+      </div>
+      <div class="field">
+        <label>Object nummer (optioneel)</label>
+        <input type="text" id="wlObjNum" placeholder="Object nummer" />
+      </div>
+      <div class="field">
+        <label>Telefoonnummer (optioneel)</label>
+        <input type="tel" id="wlPhone" placeholder="Telefoonnummer" />
+      </div>
+      <div class="field">
+        <label>E-mailadres (optioneel)</label>
+        <input type="email" id="wlEmail" placeholder="E-mailadres" />
+      </div>
+      <div class="field">
+        <label>Notities (optioneel)</label>
+        <textarea id="wlNotes"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="wlCancelBtn">Annuleren</button>
+        <button class="btn" id="wlSaveBtn">Toevoegen</button>
+      </div>
+      <div id="wlError" style="display:none;color:var(--car);font-size:12px;margin-top:10px;">Vul in elk geval een naam in.</div>
+    `;
+    overlay.classList.add('show');
+    document.getElementById('wlName').focus();
+
+    document.getElementById('wlCancelBtn').addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
+
+    document.getElementById('wlSaveBtn').addEventListener('click', () => {
+      const name = document.getElementById('wlName').value.trim();
+      const reg = document.getElementById('wlReg').value.trim();
+      const objectNummer = document.getElementById('wlObjNum').value.trim();
+      const phone = document.getElementById('wlPhone').value.trim();
+      const email = document.getElementById('wlEmail').value.trim();
+      const notes = document.getElementById('wlNotes').value.trim();
+
+      if(!name){
+        document.getElementById('wlError').style.display = 'block';
+        return;
+      }
+      if(!Array.isArray(state.waitlist)) state.waitlist = [];
+      state.waitlist.push({
+        id: 'wl-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+        name, reg, objectNummer, phone, email, notes,
+        createdAt: Date.now(),
+      });
+      closeModal();
+      render(); save();
+    });
+  }
+
+  // Set right before opening the bay modal for a waitlist placement, read
+  // (and cleared) inside openSpotModal's save handler — mirrors
+  // pendingPlacementAanvraagId, but for a locally-stored waitlist entry
+  // instead of a signed contract from the separate contract system.
+  let pendingPlacementWaitlistId = null;
+
+  function openPlaceWaitlistSearchModal(entry){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal wide';
+    body.innerHTML = `
+      <h3>Plaats ${escapeHtml(entry.name || 'klant')}</h3>
+      <div class="sub">Zoek een lege plek om deze klant in te plaatsen.</div>
+      <div class="field">
+        <label>Zoek lege plekken (pleknaam, loods)</label>
+        <input type="text" id="wlPlaceSearchInput" placeholder="Begin met typen…" />
+      </div>
+      <div id="wlPlaceResults" style="max-height:320px;overflow-y:auto;"></div>
+      <div class="modal-actions"><button class="btn ghost" id="wlPlaceCancelBtn">Annuleren</button></div>
+    `;
+    overlay.classList.add('show');
+    const input = document.getElementById('wlPlaceSearchInput');
+    input.focus();
+
+    function runSearch(){
+      const results = searchEmptyBaysForPlacement(input.value);
+      const resEl = document.getElementById('wlPlaceResults');
+      if(results.length === 0){
+        resEl.innerHTML = `<div class="search-empty">Geen lege plekken gevonden.</div>`;
+        return;
+      }
+      resEl.innerHTML = results.map((r, i) => `
+        <div class="search-result" data-wlplace-result="${i}">
+          <div class="search-result-main">
+            <div class="search-result-name">Plek ${escapeHtml(r.tag)}</div>
+            <div class="search-result-meta">${escapeHtml(r.warehouse.name)}</div>
+          </div>
+        </div>
+      `).join('');
+      resEl.querySelectorAll('[data-wlplace-result]').forEach(node => {
+        node.addEventListener('click', () => {
+          const r = results[parseInt(node.getAttribute('data-wlplace-result'), 10)];
+          body.className = 'modal';
+          closeModal();
+          openPlacementBayModalForWaitlist(entry, r);
+        });
+      });
+    }
+    input.addEventListener('input', runSearch);
+    runSearch();
+
+    document.getElementById('wlPlaceCancelBtn').addEventListener('click', () => { body.className = 'modal'; closeModal(); });
+    overlay.addEventListener('click', (e) => { if(e.target === overlay){ body.className = 'modal'; closeModal(); } }, { once:true });
+  }
+
+  // Opens the normal bay-edit modal, pre-filled with this waitlist entry's
+  // details, and removes the entry from the waitlist once saved.
+  function openPlacementBayModalForWaitlist(entry, result){
+    state.activeWarehouseId = result.warehouse.id;
+    showKlanten = false;
+    render();
+
+    pendingPlacementWaitlistId = entry.id;
+    openSpotModal(null, result.spot, null, null, null, result.tagPrefix, {
+      name: entry.name || '',
+      reg: entry.reg || '',
+      email: entry.email || '',
+      phone: entry.phone || '',
+      objectNummer: entry.objectNummer || '',
+      notes: entry.notes || '',
+    });
   }
 
   function renderWinterstallingPage(){
@@ -4330,11 +4531,19 @@
       };
 
       const placedId = pendingPlacementAanvraagId;
+      const placedWaitlistId = pendingPlacementWaitlistId;
       closeModal(); render(); save();
 
       if(placedId && contractDb){
         contractDb.collection('aanvragen').doc(placedId).update({ geplaatstInStorageSites: true })
           .catch((err) => console.error('Kon aanvraag niet als geplaatst markeren', err));
+      }
+      if(placedWaitlistId && Array.isArray(state.waitlist)){
+        const idx = state.waitlist.findIndex(x => x.id === placedWaitlistId);
+        if(idx !== -1){
+          state.waitlist.splice(idx, 1);
+          render(); save();
+        }
       }
     });
   }
@@ -4342,6 +4551,7 @@
   function closeModal(){
     document.getElementById('overlay').classList.remove('show');
     pendingPlacementAanvraagId = null;
+    pendingPlacementWaitlistId = null;
   }
 
   // ---------- reusable confirm dialog for destructive actions ----------
