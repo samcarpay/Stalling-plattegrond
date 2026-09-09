@@ -534,6 +534,15 @@
     font-size:9px;line-height:1;
     display:flex;align-items:center;justify-content:center;
   }
+  .note-badge{
+    position:absolute;top:-7px;left:-7px;
+    width:16px;height:16px;border-radius:50%;
+    background:var(--car);color:var(--card);
+    font-family:var(--font-display);font-size:10px;font-weight:700;line-height:1;
+    display:flex;align-items:center;justify-content:center;
+  }
+  /* Shifted right when a long-stay badge is already sitting in this same corner. */
+  .note-badge.shifted{left:12px;}
   .spot.is-away{
     background:#e2f3e6 !important;
     border-color:#3c8e52 !important;
@@ -3985,6 +3994,7 @@
       const t = TYPES[spot.type] || { color:'#7A7A7A', label:'Onbekend' };
       const longStay = spot.occupants.some(o => isLongStay(o.since));
       const anyAway = spot.occupants.some(o => o.away);
+      const notesTexts = spot.occupants.map(o => (o.notes || '').trim()).filter(Boolean);
       const elsewhere = findOccupantElsewhere(spot, state.activeWarehouseId);
       el.className = 'spot' + (longStay ? ' long-stay' : '') + (anyAway ? ' is-away' : '');
       el.style.background = hexAlpha(t.color, 0.16);
@@ -3998,6 +4008,7 @@
       el.innerHTML = `
         <div class="spot-del" data-clear="${spot.id}" title="Plek leegmaken">✕</div>
         ${longStay ? `<div class="long-stay-badge" title="Langer dan een jaar gestald">⏱</div>` : ''}
+        ${notesTexts.length ? `<div class="note-badge${longStay ? ' shifted' : ''}" title="${escapeAttr(notesTexts.join(' · '))}">!</div>` : ''}
         ${anyAway ? `<div class="away-badge" title="Momenteel weg — tijdelijk opgehaald">WEG</div>` : ''}
         ${elsewhere ? `<div class="winter-badge" title="Heeft ook een plek in ${escapeAttr(elsewhere.warehouse.name)}, plek ${escapeAttr(elsewhere.tag)}">❄️</div>` : ''}
         <div class="spot-id">${escapeHtml(tag)}</div>
