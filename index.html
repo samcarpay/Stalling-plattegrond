@@ -4387,14 +4387,23 @@
 
     function renderOccList(){
       const listEl = document.getElementById('occList');
-      const showMoveBtn = occDraft.length > 1;
-      listEl.innerHTML = occDraft.map((o, idx) => `
+      listEl.innerHTML = occDraft.map((o, idx) => {
+        // Shown for any occupant that actually has something identifying
+        // them filled in — moving used to only be offered when a bay held
+        // several vehicles, but the move itself (openMoveOneOccupantSearchModal)
+        // already searches every warehouse and works exactly the same for
+        // a bay with just one customer, so there's no reason to hide it
+        // there. Still hidden for a genuinely blank, not-yet-filled-in row
+        // (e.g. right after "+ Nog een voertuig op deze plek") since
+        // there's nothing meaningful to move yet.
+        const canMove = !!(o.name || o.reg || o.objectNummer);
+        return `
         <div class="occ-row" data-occ-idx="${idx}">
           <div class="occ-row-top">
             <input type="text" class="occ-name" placeholder="Naam eigenaar / klant" value="${escapeAttr(o.name)}" />
             <input type="text" class="occ-reg" placeholder="Kenteken" value="${escapeAttr(o.reg)}" />
             <input type="date" class="occ-since" value="${escapeAttr(o.since)}" title="Gestald sinds" />
-            ${showMoveBtn ? `<button class="occ-move" data-move-occ="${idx}" title="Alleen dit voertuig naar een andere plek verplaatsen">➜</button>` : ''}
+            ${canMove ? `<button class="occ-move" data-move-occ="${idx}" title="Dit voertuig naar een andere plek verplaatsen">➜</button>` : ''}
             <button class="occ-remove" data-remove-occ="${idx}" title="Dit voertuig verwijderen">✕</button>
           </div>
           <div class="occ-row-contact">
@@ -4406,7 +4415,8 @@
           <label class="occ-away-toggle"><input type="checkbox" class="occ-away" ${o.away?'checked':''} /> Momenteel weg (tijdelijk opgehaald, plek blijft gereserveerd)</label>
           <label class="occ-away-toggle"><input type="checkbox" class="occ-komt-dit-jaar" ${o.komtDitJaar?'checked':''} /> Komt dit jaar terug (winterstalling)</label>
         </div>
-      `).join('');
+      `;
+      }).join('');
       listEl.querySelectorAll('.occ-row').forEach(rowEl => {
         const idx = parseInt(rowEl.getAttribute('data-occ-idx'), 10);
         rowEl.querySelector('.occ-name').addEventListener('input', (e) => { occDraft[idx].name = e.target.value; });
