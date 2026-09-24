@@ -391,6 +391,121 @@
   .contract-badge{display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-family:var(--font-display);font-size:10.5px;font-weight:700;letter-spacing:.02em;color:var(--camper);}
   .agenda-link{font-size:11.5px;color:var(--ink-soft);margin-top:8px;padding-top:8px;border-top:1px dashed var(--paper-line);}
 
+  /* ---------- planning (werkloods & overige afspraken, iPhone/Outlook-style agenda) ---------- */
+  .pln-toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;}
+  .pln-nav{display:flex;align-items:center;gap:4px;}
+  .pln-nav-btn{
+    width:30px;height:30px;border-radius:999px;border:1px solid var(--line);background:var(--card);
+    color:var(--ink-soft);font-size:14px;display:flex;align-items:center;justify-content:center;
+  }
+  .pln-nav-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .pln-today-btn{
+    height:30px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);
+    color:var(--ink);font-size:12.5px;font-weight:700;
+  }
+  .pln-today-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .pln-title{font-family:var(--font-display);font-size:16px;font-weight:700;color:var(--ink);}
+  .pln-view-toggle{display:flex;align-items:center;background:var(--paper);border-radius:999px;padding:3px;gap:2px;}
+  .pln-view-btn{
+    height:28px;padding:0 14px;border-radius:999px;border:none;background:transparent;
+    color:var(--ink-soft);font-size:12px;font-weight:700;
+  }
+  .pln-view-btn.active{background:var(--card);color:var(--accent-strong);box-shadow:var(--shadow-sm);}
+
+  .pln-body{display:flex;gap:16px;align-items:flex-start;}
+  .pln-sidebar{flex:0 0 240px;display:flex;flex-direction:column;gap:14px;}
+  .pln-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:12px 14px;}
+  .pln-card-h{font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-bottom:9px;}
+
+  .pln-mini-head{font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:8px;}
+  .pln-mini-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}
+  .pln-mini-dow{text-align:center;font-size:9.5px;font-weight:700;color:var(--ink-faint);margin-bottom:2px;}
+  .pln-mini-cell{
+    aspect-ratio:1/1;border-radius:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-size:11px;font-weight:600;color:var(--ink);cursor:pointer;
+  }
+  .pln-mini-cell:hover{background:var(--accent-soft);}
+  .pln-mini-cell.out{color:var(--ink-faint);}
+  .pln-mini-cell.in-week{background:var(--accent-soft);}
+  .pln-mini-cell.is-today{background:var(--accent);color:#fff;font-weight:800;}
+  .pln-mini-dot{width:4px;height:4px;border-radius:999px;margin-top:1px;}
+
+  .pln-legend-row{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink);margin-bottom:7px;}
+  .pln-legend-row:last-child{margin-bottom:0;}
+  .pln-legend-dot{width:10px;height:10px;border-radius:999px;flex-shrink:0;}
+
+  .pln-upcoming-item{display:flex;gap:8px;align-items:flex-start;margin-bottom:10px;cursor:pointer;}
+  .pln-upcoming-item:last-child{margin-bottom:0;}
+  .pln-upcoming-bar{width:4px;align-self:stretch;border-radius:999px;flex-shrink:0;}
+  .pln-upcoming-when{font-size:11.5px;font-weight:700;color:var(--ink);}
+  .pln-upcoming-title{font-size:12px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+  .pln-main{flex:1 1 auto;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);overflow:hidden;}
+
+  .pln-week-head{display:grid;grid-template-columns:52px repeat(7,1fr);border-bottom:1px solid var(--paper-line);}
+  .pln-week-head-cell{padding:9px 4px;text-align:center;}
+  .pln-week-head-cell.is-today{background:var(--accent-soft);}
+  .pln-week-dow{font-size:10.5px;font-weight:700;letter-spacing:.03em;color:var(--ink-faint);}
+  .pln-week-daynum{
+    display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;
+    margin-top:3px;font-size:14px;font-weight:700;color:var(--ink);
+  }
+  .pln-week-head-cell.is-today .pln-week-daynum{background:var(--accent);color:#fff;}
+
+  .pln-allday-row{display:grid;grid-template-columns:52px repeat(7,1fr);grid-auto-rows:22px;row-gap:4px;padding:6px 0;border-bottom:1px solid var(--paper-line);}
+  .pln-allday-chip{
+    margin:0 3px;border-radius:6px;padding:2px 8px;font-size:10.5px;font-weight:700;color:#fff;
+    overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;display:flex;align-items:center;
+  }
+
+  .pln-week-scroll{display:flex;max-height:600px;overflow-y:auto;}
+  .pln-hour-gutter{width:52px;flex:0 0 auto;position:relative;}
+  .pln-hour-label{position:absolute;left:0;right:6px;text-align:right;font-size:10px;color:var(--ink-faint);transform:translateY(-50%);}
+  .pln-day-col{flex:1 1 0;position:relative;border-left:1px solid var(--paper-line);}
+  .pln-day-col.is-today{background:#FCFBF6;}
+  .pln-grid-line{position:absolute;left:0;right:0;border-top:1px solid var(--paper-line);}
+  .pln-now-line{position:absolute;left:0;right:0;border-top:2px solid var(--car);z-index:3;}
+  .pln-now-dot{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:999px;background:var(--car);}
+  .pln-appt-block{
+    position:absolute;left:3px;right:3px;border-radius:6px;padding:3px 6px;overflow:hidden;box-sizing:border-box;
+    cursor:pointer;z-index:2;
+  }
+  .pln-appt-title{font-size:10.5px;font-weight:700;line-height:1.25;}
+  .pln-appt-time{font-size:9.5px;opacity:.82;line-height:1.2;}
+
+  .pln-day-view-head{padding:14px 20px;border-bottom:1px solid var(--paper-line);}
+  .pln-day-view-title{font-size:15px;font-weight:700;color:var(--ink);}
+  .pln-day-view-sub{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .pln-day-view-list{padding:4px 20px 16px;}
+  .pln-day-view-row{display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--paper-line);align-items:flex-start;cursor:pointer;}
+  .pln-day-view-row:last-child{border-bottom:none;}
+  .pln-day-view-time{width:96px;flex:0 0 auto;font-size:12px;font-weight:700;color:var(--ink-soft);padding-top:2px;}
+  .pln-day-view-bar{width:4px;align-self:stretch;border-radius:999px;flex-shrink:0;}
+  .pln-day-view-name{font-size:14px;font-weight:700;color:var(--ink);}
+  .pln-day-view-meta{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+
+  .pln-month-head{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--paper-line);}
+  .pln-month-head-cell{padding:9px 0;text-align:center;font-size:11px;font-weight:700;color:var(--ink-faint);}
+  .pln-month-grid{display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:minmax(84px,1fr);}
+  .pln-month-cell{border-right:1px solid var(--paper-line);border-bottom:1px solid var(--paper-line);padding:7px;box-sizing:border-box;cursor:pointer;}
+  .pln-month-cell.out{background:var(--paper);}
+  .pln-month-cell.is-today{background:var(--accent-soft);}
+  .pln-month-daynum{
+    display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:999px;
+    font-size:12px;font-weight:700;color:var(--ink);
+  }
+  .pln-month-cell.out .pln-month-daynum{color:var(--ink-faint);}
+  .pln-month-cell.is-today .pln-month-daynum{background:var(--accent);color:#fff;}
+  .pln-month-dots{display:flex;gap:3px;flex-wrap:wrap;margin-top:5px;}
+  .pln-month-dot{width:6px;height:6px;border-radius:999px;}
+
+  .pln-empty{font-size:12.5px;color:var(--ink-soft);font-style:italic;padding:30px 20px;text-align:center;}
+
+  @media (max-width:900px){
+    .pln-body{flex-direction:column;}
+    .pln-sidebar{flex:1 1 auto;width:100%;}
+  }
+
   /* ---------- warehouse plan ---------- */
   /* single shared horizontal scroller so every row (and both sides) move together */
   .plan-scroll{overflow-x:auto;padding-bottom:6px;}
@@ -1143,14 +1258,20 @@
         initAppointmentsSync();
         initBlockedDatesSync();
         initNieuweKlantenSync();
+        initWerkloodsSync();
       } else if(needsAuth && firebase.auth){
         firebase.auth().signInAnonymously().then(() => {
           initAppointmentsSync();
           initBlockedDatesSync();
           initNieuweKlantenSync();
+          initWerkloodsSync();
         }).catch((err) => {
           console.error('Anonymous sign-in failed', err);
         });
+      } else {
+        // Neither useRealLogin nor a needsAuth feature is on — planning
+        // bookings should still sync for a plain, unauthenticated setup.
+        initWerkloodsSync();
       }
 
       syncDataRef.on('value', (snapshot) => {
@@ -1230,6 +1351,38 @@
       });
     }catch(e){
       console.error('Blocked dates sync failed to start', e);
+    }
+  }
+
+  // ---------- werkloods / overige planning (multi-day bookings, admin-only) ----------
+  // Distinct from the pickup-appointments Agenda tab above: these are
+  // staff-created bookings for the work bay ("werkloods") or any other
+  // business appointment, and can span multiple days. Kept in their own
+  // Firebase path since the public booking widget never touches it — no
+  // change to firebase-config.js needed, but the database rules DO need a
+  // matching entry for this path (same auth != null rule as the others) or
+  // saving a planning item will silently fail.
+  const WERKLOODS_PATH = 'werkloods-bookings';
+  let werkloodsBookings = []; // [{id, kind:'werkloods'|'overig', title, startDate, endDate, startTime, endTime, notes, createdAt}]
+  let werkloodsRef = null;
+  let showPlanning = false;         // UI-only, not persisted
+  let planningView = 'week';        // 'day' | 'week' | 'month' — UI-only, not persisted
+  let planningRefDate = new Date(); // anchor date for whichever view is showing — UI-only, not persisted
+
+  function initWerkloodsSync(){
+    if(!hasFirebaseSync) return;
+    try{
+      werkloodsRef = firebase.database().ref(WERKLOODS_PATH);
+      werkloodsRef.on('value', (snapshot) => {
+        const val = snapshot.val() || {};
+        werkloodsBookings = Object.keys(val).map(k => ({ id: k, ...val[k] }));
+        renderTabs();
+        if(showPlanning) renderPlanningPage();
+      }, (error) => {
+        console.error('Werkloods sync error', error);
+      });
+    }catch(e){
+      console.error('Werkloods sync failed to start', e);
     }
   }
 
@@ -1664,6 +1817,12 @@
       document.getElementById('legend').innerHTML = '';
       document.getElementById('whPurpose').innerHTML = '';
       renderAgendaPage();
+    } else if(showPlanning){
+      document.getElementById('stats').innerHTML = '';
+      document.getElementById('globalStatLine').innerHTML = '';
+      document.getElementById('legend').innerHTML = '';
+      document.getElementById('whPurpose').innerHTML = '';
+      renderPlanningPage();
     } else if(showNieuweKlanten){
       document.getElementById('stats').innerHTML = '';
       document.getElementById('globalStatLine').innerHTML = '';
@@ -2460,6 +2619,604 @@
     }
 
     wrap.appendChild(container);
+  }
+
+  // ---------- planning page (werkloods & overige afspraken + geïntegreerde ophaalafspraken) ----------
+  // A calendar-style view (week/day/month, like the iPhone or Outlook
+  // agenda) that merges three kinds of items:
+  //   - "ophalen": the same pickup appointments as the Agenda tab above —
+  //     both the ones customers book themselves via the website widget, and
+  //     the ones staff add by hand there (tagged source:'manual').
+  //   - "werkloods": a staff-booked slot in the work bay, which can span
+  //     multiple days.
+  //   - "overig": any other business appointment staff wants on the calendar.
+  // The latter two are created/edited from here and live in their own
+  // Firebase path (WERKLOODS_PATH); pickups are read-only from this page —
+  // manage those from the Agenda tab, they just show up here automatically.
+  const PLN_META = {
+    ophalen:   { label: 'Ophalen',   color: 'var(--caravan)', soft: 'var(--caravan-soft)' },
+    werkloods: { label: 'Werkloods', color: 'var(--accent)',  soft: 'var(--accent-soft)' },
+    overig:    { label: 'Overig',    color: 'var(--trailer)', soft: 'var(--trailer-soft)' },
+  };
+  const PLN_HOUR_START = 7;
+  const PLN_HOUR_END = 19;
+  const PLN_HOUR_PX = 48;
+
+  function plnIso(d){ return d.toISOString().slice(0,10); }
+  function plnToday(){ return plnIso(new Date()); }
+  function plnAddDays(d, n){ const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+  function plnMonday(d){
+    const day = d.getDay();
+    const diff = (day === 0 ? -6 : 1 - day);
+    return plnAddDays(d, diff);
+  }
+  function plnParseIso(iso){ return new Date(iso + 'T00:00:00'); }
+  function plnTimeToMin(t){
+    const p = (t || '00:00').split(':');
+    return parseInt(p[0], 10) * 60 + parseInt(p[1], 10);
+  }
+
+  function plnPickupItems(){
+    return appointments.filter(a => a.status !== 'done' && a.date).map(a => ({
+      uid: 'appt-' + a.id,
+      apptId: a.id,
+      kind: 'ophalen',
+      title: (a.source !== 'manual' ? '🌐 ' : '✍️ ') + (a.name || 'Naam onbekend'),
+      sub: a.vehicleDesc || '',
+      startDate: a.date,
+      endDate: a.date,
+      time: a.time || null,
+      endTime: null,
+    }));
+  }
+  function plnBookingItems(){
+    return werkloodsBookings.map(b => ({
+      uid: 'wl-' + b.id,
+      wlId: b.id,
+      kind: b.kind === 'overig' ? 'overig' : 'werkloods',
+      title: b.title || 'Afspraak',
+      sub: b.notes || '',
+      startDate: b.startDate,
+      endDate: b.endDate || b.startDate,
+      time: (b.startDate === (b.endDate || b.startDate)) ? (b.startTime || null) : null,
+      endTime: b.endTime || null,
+    }));
+  }
+  function plnAllItems(){ return [...plnPickupItems(), ...plnBookingItems()]; }
+
+  function plnClickItem(item){
+    if(item.kind === 'ophalen'){
+      openPlanningPickupInfoModal(item.apptId);
+    } else {
+      const b = werkloodsBookings.find(x => x.id === item.wlId);
+      if(b) openPlanningBookingModal(b);
+    }
+  }
+
+  function openPlanningPickupInfoModal(apptId){
+    const a = appointments.find(x => x.id === apptId);
+    if(!a) return;
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal';
+    const info = findLinkedInfo(a.linked);
+    body.innerHTML = `
+      <h3>Ophaalafspraak</h3>
+      <div class="sub">${a.source !== 'manual' ? '🌐 Automatisch geboekt via de website' : '✍️ Handmatig toegevoegd door jullie'}</div>
+      <div class="field"><label>Naam</label><div style="font-size:13px;color:var(--ink);">${escapeHtml(a.name || 'Naam onbekend')}</div></div>
+      <div class="field"><label>Datum</label><div style="font-size:13px;color:var(--ink);">${escapeHtml(formatApptWhen(a) || 'Geen datum')}</div></div>
+      ${a.vehicleDesc ? `<div class="field"><label>Object / kenteken</label><div style="font-size:13px;color:var(--ink);">${escapeHtml(a.vehicleDesc)}</div></div>` : ''}
+      ${a.contact ? `<div class="field"><label>Contact</label><div style="font-size:13px;color:var(--ink);">${escapeHtml(a.contact)}</div></div>` : ''}
+      ${a.notes ? `<div class="field"><label>Notities</label><div style="font-size:13px;color:var(--ink);">${escapeHtml(a.notes)}</div></div>` : ''}
+      ${info ? '' : '<div class="sub">Nog niet gekoppeld aan een plek.</div>'}
+      <div class="modal-actions">
+        <button class="btn ghost" id="plnPickupCloseBtn">Sluiten</button>
+        <button class="btn" id="plnPickupAgendaBtn">Open in Agenda</button>
+      </div>
+    `;
+    overlay.classList.add('show');
+    document.getElementById('plnPickupCloseBtn').addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
+    document.getElementById('plnPickupAgendaBtn').addEventListener('click', () => {
+      closeModal();
+      showAgenda = true;
+      showPlanning = false;
+      render();
+    });
+  }
+
+  function openPlanningBookingModal(existing){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal';
+    let kind = existing ? existing.kind : 'werkloods';
+
+    function chipsHtml(){
+      return `
+        <div class="type-row" id="plnKindRow">
+          <div class="type-chip ${kind==='werkloods'?'active':''}" data-kind="werkloods">🛠️ Werkloods</div>
+          <div class="type-chip ${kind==='overig'?'active':''}" data-kind="overig">🗂️ Overig</div>
+        </div>
+      `;
+    }
+
+    body.innerHTML = `
+      <h3>${existing ? 'Planningsafspraak bewerken' : 'Nieuwe planningsafspraak'}</h3>
+      <div class="sub">Voor een werkloods-boeking (kan meerdere dagen duren) of een andere zakelijke afspraak. Ophaalafspraken van klanten blijf je toevoegen via de Agenda-tab — die verschijnen hier automatisch mee.</div>
+      <div class="field"><label>Soort</label>${chipsHtml()}</div>
+      <div class="field">
+        <label>Titel / omschrijving</label>
+        <input type="text" id="plnTitle" placeholder="bijv. Onderhoud aanhanger — dhr. Kramer" value="${escapeAttr(existing?.title || '')}" />
+      </div>
+      <div class="field" style="display:flex;gap:10px;">
+        <div style="flex:1;">
+          <label>Startdatum</label>
+          <input type="date" id="plnStart" value="${escapeAttr(existing?.startDate || plnToday())}" />
+        </div>
+        <div style="flex:1;">
+          <label>Einddatum</label>
+          <input type="date" id="plnEnd" value="${escapeAttr(existing?.endDate || existing?.startDate || plnToday())}" />
+        </div>
+      </div>
+      <div class="sub" style="margin-top:-4px;">Zelfde datum in beide velden = één dag. Latere einddatum = meerdaagse boeking (bijv. de hele week in de werkloods).</div>
+      <div class="field" style="display:flex;gap:10px;">
+        <div style="flex:1;">
+          <label>Starttijd (optioneel, alleen bij één dag)</label>
+          <input type="time" id="plnStartTime" value="${escapeAttr(existing?.startTime || '')}" />
+        </div>
+        <div style="flex:1;">
+          <label>Eindtijd (optioneel)</label>
+          <input type="time" id="plnEndTime" value="${escapeAttr(existing?.endTime || '')}" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Notities (optioneel)</label>
+        <textarea id="plnNotes">${escapeHtml(existing?.notes || '')}</textarea>
+      </div>
+      <div class="modal-actions">
+        ${existing ? '<button class="btn danger" id="plnDeleteBtn" style="margin-right:auto;">Verwijderen</button>' : ''}
+        <button class="btn ghost" id="plnCancelBtn">Annuleren</button>
+        <button class="btn" id="plnSaveBtn">${existing ? 'Opslaan' : 'Toevoegen'}</button>
+      </div>
+      <div id="plnError" style="display:none;color:var(--car);font-size:12px;margin-top:10px;">Vul in elk geval een titel en een startdatum in, en zorg dat de einddatum niet vóór de startdatum ligt.</div>
+    `;
+    overlay.classList.add('show');
+    document.getElementById('plnTitle').focus();
+
+    document.querySelectorAll('#plnKindRow [data-kind]').forEach(chip => {
+      chip.addEventListener('click', () => {
+        kind = chip.getAttribute('data-kind');
+        document.querySelectorAll('#plnKindRow [data-kind]').forEach(c => c.classList.toggle('active', c.getAttribute('data-kind') === kind));
+      });
+    });
+
+    document.getElementById('plnCancelBtn').addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
+
+    if(existing){
+      document.getElementById('plnDeleteBtn').addEventListener('click', () => {
+        confirmAction('Planningsafspraak verwijderen?', 'Dit verwijdert deze boeking permanent.', () => {
+          if(werkloodsRef) werkloodsRef.child(existing.id).remove();
+          closeModal();
+        });
+      });
+    }
+
+    document.getElementById('plnSaveBtn').addEventListener('click', () => {
+      const title = document.getElementById('plnTitle').value.trim();
+      const startDate = document.getElementById('plnStart').value;
+      const endDate = document.getElementById('plnEnd').value || startDate;
+      const startTime = document.getElementById('plnStartTime').value;
+      const endTime = document.getElementById('plnEndTime').value;
+      const notes = document.getElementById('plnNotes').value.trim();
+
+      if(!title || !startDate || endDate < startDate){
+        document.getElementById('plnError').style.display = 'block';
+        return;
+      }
+      if(!werkloodsRef) return;
+
+      const payload = {
+        kind, title, startDate, endDate,
+        startTime: startDate === endDate ? (startTime || null) : null,
+        endTime: startDate === endDate ? (endTime || null) : null,
+        notes,
+      };
+      if(existing){
+        werkloodsRef.child(existing.id).update(payload);
+      } else {
+        werkloodsRef.push({ ...payload, createdAt: Date.now() });
+      }
+      closeModal();
+    });
+  }
+
+  function renderPlanningPage(){
+    const wrap = document.getElementById('plan');
+    wrap.innerHTML = '';
+
+    if(!werkloodsRef && hasFirebaseSync){
+      wrap.innerHTML = `<div class="print-empty">Verbinden…</div>`;
+      return;
+    }
+
+    const container = document.createElement('div');
+    container.className = 'overview';
+
+    const monday = plnMonday(planningRefDate);
+    const sunday = plnAddDays(monday, 6);
+    let title;
+    if(planningView === 'week'){
+      const sameMonth = monday.getMonth() === sunday.getMonth();
+      title = sameMonth
+        ? `${monday.getDate()} – ${sunday.getDate()} ${DUTCH_MONTH_NAMES[monday.getMonth()]} ${monday.getFullYear()}`
+        : `${monday.getDate()} ${DUTCH_MONTH_NAMES[monday.getMonth()]} – ${sunday.getDate()} ${DUTCH_MONTH_NAMES[sunday.getMonth()]} ${sunday.getFullYear()}`;
+    } else if(planningView === 'day'){
+      title = `${DUTCH_DAY_NAMES[planningRefDate.getDay()]} ${planningRefDate.getDate()} ${DUTCH_MONTH_NAMES[planningRefDate.getMonth()]} ${planningRefDate.getFullYear()}`;
+    } else {
+      title = `${DUTCH_MONTH_NAMES[planningRefDate.getMonth()]} ${planningRefDate.getFullYear()}`;
+    }
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'pln-toolbar';
+    toolbar.innerHTML = `
+      <div class="pln-nav">
+        <button class="pln-nav-btn" id="plnPrevBtn">‹</button>
+        <button class="pln-today-btn" id="plnTodayBtn">Vandaag</button>
+        <button class="pln-nav-btn" id="plnNextBtn">›</button>
+      </div>
+      <div class="pln-title">${escapeHtml(title)}</div>
+      <div style="flex-grow:1;"></div>
+      <div class="pln-view-toggle">
+        <button class="pln-view-btn ${planningView==='day'?'active':''}" data-view="day">Dag</button>
+        <button class="pln-view-btn ${planningView==='week'?'active':''}" data-view="week">Week</button>
+        <button class="pln-view-btn ${planningView==='month'?'active':''}" data-view="month">Maand</button>
+      </div>
+      <button class="btn small" id="plnAddBtn">+ Nieuwe planningsafspraak</button>
+    `;
+    container.appendChild(toolbar);
+
+    toolbar.querySelector('#plnPrevBtn').addEventListener('click', () => {
+      if(planningView === 'month'){
+        planningRefDate = new Date(planningRefDate.getFullYear(), planningRefDate.getMonth() - 1, 1);
+      } else {
+        planningRefDate = plnAddDays(planningRefDate, planningView === 'day' ? -1 : -7);
+      }
+      renderPlanningPage();
+    });
+    toolbar.querySelector('#plnNextBtn').addEventListener('click', () => {
+      if(planningView === 'month'){
+        planningRefDate = new Date(planningRefDate.getFullYear(), planningRefDate.getMonth() + 1, 1);
+      } else {
+        planningRefDate = plnAddDays(planningRefDate, planningView === 'day' ? 1 : 7);
+      }
+      renderPlanningPage();
+    });
+    toolbar.querySelector('#plnTodayBtn').addEventListener('click', () => {
+      planningRefDate = new Date();
+      renderPlanningPage();
+    });
+    toolbar.querySelectorAll('[data-view]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        planningView = btn.getAttribute('data-view');
+        renderPlanningPage();
+      });
+    });
+    toolbar.querySelector('#plnAddBtn').addEventListener('click', () => openPlanningBookingModal(null));
+
+    const bodyRow = document.createElement('div');
+    bodyRow.className = 'pln-body';
+    container.appendChild(bodyRow);
+
+    bodyRow.appendChild(renderPlanningSidebar());
+
+    const main = document.createElement('div');
+    main.className = 'pln-main';
+    bodyRow.appendChild(main);
+
+    if(planningView === 'week') renderPlanningWeekView(main, monday);
+    else if(planningView === 'day') renderPlanningDayView(main);
+    else renderPlanningMonthView(main);
+
+    wrap.appendChild(container);
+  }
+
+  function renderPlanningSidebar(){
+    const sidebar = document.createElement('div');
+    sidebar.className = 'pln-sidebar';
+
+    const miniCard = document.createElement('div');
+    miniCard.className = 'pln-card';
+    const y = planningRefDate.getFullYear();
+    const m = planningRefDate.getMonth();
+    const firstOfMonth = new Date(y, m, 1);
+    const gridStart = plnMonday(firstOfMonth);
+    const todayIso = plnToday();
+    const monday = plnMonday(planningRefDate);
+    const weekIsoSet = new Set([0,1,2,3,4,5,6].map(i => plnIso(plnAddDays(monday, i))));
+    const items = plnAllItems();
+    const itemsByDate = {};
+    items.forEach(it => {
+      let d = plnParseIso(it.startDate);
+      const end = plnParseIso(it.endDate);
+      while(d <= end){
+        const iso = plnIso(d);
+        (itemsByDate[iso] = itemsByDate[iso] || []).push(it);
+        d = plnAddDays(d, 1);
+      }
+    });
+
+    let miniCells = '';
+    for(let i = 0; i < 35; i++){
+      const d = plnAddDays(gridStart, i);
+      const iso = plnIso(d);
+      const inMonth = d.getMonth() === m;
+      const isToday = iso === todayIso;
+      const inWeek = planningView === 'week' && weekIsoSet.has(iso);
+      const dayItems = itemsByDate[iso] || [];
+      const cls = ['pln-mini-cell'];
+      if(!inMonth) cls.push('out');
+      if(inWeek && !isToday) cls.push('in-week');
+      if(isToday) cls.push('is-today');
+      miniCells += `<div class="${cls.join(' ')}" data-mini-date="${iso}">
+        <span>${d.getDate()}</span>
+        ${dayItems.length ? `<span class="pln-mini-dot" style="background:${PLN_META[dayItems[0].kind].color}"></span>` : ''}
+      </div>`;
+    }
+
+    miniCard.innerHTML = `
+      <div class="pln-mini-head">${DUTCH_MONTH_NAMES[m][0].toUpperCase() + DUTCH_MONTH_NAMES[m].slice(1)} ${y}</div>
+      <div class="pln-mini-grid">
+        ${['M','D','W','D','V','Z','Z'].map(l => `<div class="pln-mini-dow">${l}</div>`).join('')}
+        ${miniCells}
+      </div>
+    `;
+    miniCard.querySelectorAll('[data-mini-date]').forEach(cell => {
+      cell.addEventListener('click', () => {
+        planningRefDate = plnParseIso(cell.getAttribute('data-mini-date'));
+        renderPlanningPage();
+      });
+    });
+    sidebar.appendChild(miniCard);
+
+    const legendCard = document.createElement('div');
+    legendCard.className = 'pln-card';
+    legendCard.innerHTML = `
+      <div class="pln-card-h">Soorten afspraken</div>
+      ${Object.keys(PLN_META).map(k => `
+        <div class="pln-legend-row"><span class="pln-legend-dot" style="background:${PLN_META[k].color}"></span>${PLN_META[k].label}</div>
+      `).join('')}
+    `;
+    sidebar.appendChild(legendCard);
+
+    const upcomingCard = document.createElement('div');
+    upcomingCard.className = 'pln-card';
+    const upcoming = items
+      .filter(it => it.endDate >= todayIso)
+      .sort((a, b) => (a.startDate + (a.time || '00:00')).localeCompare(b.startDate + (b.time || '00:00')))
+      .slice(0, 6);
+    upcomingCard.innerHTML = `
+      <div class="pln-card-h">Komende afspraken</div>
+      ${upcoming.length === 0 ? '<div class="pln-empty" style="padding:6px 0;">Niets gepland.</div>' : upcoming.map((it, i) => `
+        <div class="pln-upcoming-item" data-upcoming-idx="${i}">
+          <span class="pln-upcoming-bar" style="background:${PLN_META[it.kind].color}"></span>
+          <div style="min-width:0;">
+            <div class="pln-upcoming-when">${formatDutchDate(it.startDate).split(' ').slice(1).join(' ')}${it.endDate !== it.startDate ? ' – ' + formatDutchDate(it.endDate).split(' ').slice(1).join(' ') : ''}${it.time ? ' · ' + it.time : ''}</div>
+            <div class="pln-upcoming-title">${escapeHtml(it.title)}</div>
+          </div>
+        </div>
+      `).join('')}
+    `;
+    upcomingCard.querySelectorAll('[data-upcoming-idx]').forEach(row => {
+      row.addEventListener('click', () => {
+        plnClickItem(upcoming[parseInt(row.getAttribute('data-upcoming-idx'), 10)]);
+      });
+    });
+    sidebar.appendChild(upcomingCard);
+
+    return sidebar;
+  }
+
+  function renderPlanningWeekView(main, monday){
+    const todayIso = plnToday();
+    const weekDates = [0,1,2,3,4,5,6].map(i => plnIso(plnAddDays(monday, i)));
+    const items = plnAllItems();
+
+    const head = document.createElement('div');
+    head.className = 'pln-week-head';
+    head.innerHTML = `<div></div>` + weekDates.map((iso, i) => {
+      const d = plnAddDays(monday, i);
+      return `<div class="pln-week-head-cell${iso===todayIso?' is-today':''}">
+        <div class="pln-week-dow">${DUTCH_DAY_NAMES[d.getDay()].slice(0,2).toUpperCase()}</div>
+        <div class="pln-week-daynum">${d.getDate()}</div>
+      </div>`;
+    }).join('');
+    main.appendChild(head);
+
+    const allDayItems = items
+      .filter(it => !it.time)
+      .map(it => {
+        let first = -1, last = -1;
+        weekDates.forEach((iso, idx) => {
+          if(iso >= it.startDate && iso <= it.endDate){
+            if(first === -1) first = idx;
+            last = idx;
+          }
+        });
+        return first === -1 ? null : { it, first, last };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.first - b.first || (b.last - b.first) - (a.last - a.first));
+
+    const lanes = [];
+    allDayItems.forEach(entry => {
+      let lane = lanes.findIndex(l => l < entry.first);
+      if(lane === -1){ lane = lanes.length; lanes.push(entry.last); }
+      else lanes[lane] = entry.last;
+      entry.lane = lane;
+    });
+
+    if(allDayItems.length){
+      const allDayRow = document.createElement('div');
+      allDayRow.className = 'pln-allday-row';
+      allDayRow.style.gridTemplateRows = `repeat(${lanes.length}, 22px)`;
+      allDayRow.innerHTML = allDayItems.map(({ it, first, last, lane }) => `
+        <div class="pln-allday-chip" data-item-uid="${escapeAttr(it.uid)}" style="grid-column:${first + 2} / ${last + 3};grid-row:${lane + 1};background:${PLN_META[it.kind].color};">
+          ${escapeHtml(it.title)}
+        </div>
+      `).join('');
+      main.appendChild(allDayRow);
+      allDayRow.querySelectorAll('[data-item-uid]').forEach(chip => {
+        const entry = allDayItems.find(e => e.it.uid === chip.getAttribute('data-item-uid'));
+        if(entry) chip.addEventListener('click', () => plnClickItem(entry.it));
+      });
+    }
+
+    const scroll = document.createElement('div');
+    scroll.className = 'pln-week-scroll';
+
+    const gutter = document.createElement('div');
+    gutter.className = 'pln-hour-gutter';
+    gutter.style.height = ((PLN_HOUR_END - PLN_HOUR_START) * PLN_HOUR_PX) + 'px';
+    for(let h = PLN_HOUR_START; h <= PLN_HOUR_END; h++){
+      const lbl = document.createElement('div');
+      lbl.className = 'pln-hour-label';
+      lbl.style.top = ((h - PLN_HOUR_START) * PLN_HOUR_PX) + 'px';
+      lbl.textContent = (h < 10 ? '0' + h : h) + ':00';
+      gutter.appendChild(lbl);
+    }
+    scroll.appendChild(gutter);
+
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    const nowTop = (nowMin - PLN_HOUR_START * 60) / 60 * PLN_HOUR_PX;
+
+    weekDates.forEach((iso, i) => {
+      const col = document.createElement('div');
+      col.className = 'pln-day-col' + (iso === todayIso ? ' is-today' : '');
+      col.style.height = ((PLN_HOUR_END - PLN_HOUR_START) * PLN_HOUR_PX) + 'px';
+      for(let h = 1; h < (PLN_HOUR_END - PLN_HOUR_START); h++){
+        const line = document.createElement('div');
+        line.className = 'pln-grid-line';
+        line.style.top = (h * PLN_HOUR_PX) + 'px';
+        col.appendChild(line);
+      }
+      if(iso === todayIso && nowTop >= 0 && nowTop <= (PLN_HOUR_END - PLN_HOUR_START) * PLN_HOUR_PX){
+        const now = document.createElement('div');
+        now.className = 'pln-now-line';
+        now.style.top = nowTop + 'px';
+        now.innerHTML = '<span class="pln-now-dot"></span>';
+        col.appendChild(now);
+      }
+      const dayItems = items.filter(it => it.time && it.startDate === iso);
+      dayItems.forEach(it => {
+        const startMin = plnTimeToMin(it.time);
+        const endMin = it.endTime ? plnTimeToMin(it.endTime) : startMin + 30;
+        const top = Math.max((startMin - PLN_HOUR_START * 60) / 60 * PLN_HOUR_PX, 0);
+        const h = Math.max((endMin - startMin) / 60 * PLN_HOUR_PX, 20);
+        const block = document.createElement('div');
+        block.className = 'pln-appt-block';
+        block.style.top = top + 'px';
+        block.style.height = h + 'px';
+        block.style.background = PLN_META[it.kind].soft;
+        block.style.borderLeft = '3px solid ' + PLN_META[it.kind].color;
+        block.innerHTML = `<div class="pln-appt-title">${escapeHtml(it.title)}</div><div class="pln-appt-time">${it.time}${it.endTime ? ' – ' + it.endTime : ''}</div>`;
+        block.addEventListener('click', () => plnClickItem(it));
+        col.appendChild(block);
+      });
+      scroll.appendChild(col);
+    });
+
+    main.appendChild(scroll);
+  }
+
+  function renderPlanningDayView(main){
+    const iso = plnIso(planningRefDate);
+    const items = plnAllItems().filter(it => iso >= it.startDate && iso <= it.endDate);
+    items.sort((a, b) => (a.time || '00:00').localeCompare(b.time || '00:00'));
+
+    const head = document.createElement('div');
+    head.className = 'pln-day-view-head';
+    head.innerHTML = `
+      <div class="pln-day-view-title">${DUTCH_DAY_NAMES[planningRefDate.getDay()]} ${planningRefDate.getDate()} ${DUTCH_MONTH_NAMES[planningRefDate.getMonth()]}</div>
+      <div class="pln-day-view-sub">${iso === plnToday() ? 'Vandaag · ' : ''}${items.length} afspra${items.length===1?'ak':'ken'}</div>
+    `;
+    main.appendChild(head);
+
+    const list = document.createElement('div');
+    list.className = 'pln-day-view-list';
+    if(items.length === 0){
+      list.innerHTML = `<div class="pln-empty">Geen afspraken op deze dag.</div>`;
+    } else {
+      list.innerHTML = items.map((it, i) => `
+        <div class="pln-day-view-row" data-day-idx="${i}">
+          <div class="pln-day-view-time">${it.time ? it.time + (it.endTime ? ' – ' + it.endTime : '') : (it.endDate !== it.startDate ? 'Hele periode' : 'Hele dag')}</div>
+          <span class="pln-day-view-bar" style="background:${PLN_META[it.kind].color}"></span>
+          <div style="min-width:0;">
+            <div class="pln-day-view-name">${escapeHtml(it.title)}</div>
+            <div class="pln-day-view-meta">${PLN_META[it.kind].label}${it.sub ? ' · ' + escapeHtml(it.sub) : ''}${it.endDate !== it.startDate ? ' · t/m ' + formatDutchDate(it.endDate) : ''}</div>
+          </div>
+        </div>
+      `).join('');
+      list.querySelectorAll('[data-day-idx]').forEach(row => {
+        row.addEventListener('click', () => plnClickItem(items[parseInt(row.getAttribute('data-day-idx'), 10)]));
+      });
+    }
+    main.appendChild(list);
+  }
+
+  function renderPlanningMonthView(main){
+    const y = planningRefDate.getFullYear();
+    const m = planningRefDate.getMonth();
+    const firstOfMonth = new Date(y, m, 1);
+    const gridStart = plnMonday(firstOfMonth);
+    const lastOfMonth = new Date(y, m + 1, 0);
+    const daysSpan = Math.round((lastOfMonth - gridStart) / 86400000) + 1;
+    const totalCells = Math.ceil(daysSpan / 7) * 7;
+    const todayIso = plnToday();
+    const items = plnAllItems();
+    const itemsByDate = {};
+    items.forEach(it => {
+      let d = plnParseIso(it.startDate);
+      const end = plnParseIso(it.endDate);
+      while(d <= end){
+        const iso = plnIso(d);
+        (itemsByDate[iso] = itemsByDate[iso] || []).push(it);
+        d = plnAddDays(d, 1);
+      }
+    });
+
+    const head = document.createElement('div');
+    head.className = 'pln-month-head';
+    head.innerHTML = DUTCH_DAY_NAMES.slice(1).concat(DUTCH_DAY_NAMES[0]).map(n => `<div class="pln-month-head-cell">${n.slice(0,2)}</div>`).join('');
+    main.appendChild(head);
+
+    const grid = document.createElement('div');
+    grid.className = 'pln-month-grid';
+    let cellsHtml = '';
+    for(let i = 0; i < totalCells; i++){
+      const d = plnAddDays(gridStart, i);
+      const iso = plnIso(d);
+      const inMonth = d.getMonth() === m;
+      const isToday = iso === todayIso;
+      const dayItems = (itemsByDate[iso] || []).slice(0, 4);
+      cellsHtml += `
+        <div class="pln-month-cell${inMonth?'':' out'}${isToday?' is-today':''}" data-month-date="${iso}">
+          <span class="pln-month-daynum">${d.getDate()}</span>
+          <div class="pln-month-dots">
+            ${dayItems.map(it => `<span class="pln-month-dot" style="background:${PLN_META[it.kind].color}" title="${escapeAttr(it.title)}"></span>`).join('')}
+          </div>
+        </div>
+      `;
+    }
+    grid.innerHTML = cellsHtml;
+    grid.querySelectorAll('[data-month-date]').forEach(cell => {
+      cell.addEventListener('click', () => {
+        planningRefDate = plnParseIso(cell.getAttribute('data-month-date'));
+        planningView = 'day';
+        renderPlanningPage();
+      });
+    });
+    main.appendChild(grid);
   }
 
   // ---------- nieuwe klanten page ----------
@@ -3332,6 +4089,7 @@
         createdAt: Date.now(),
         linked: null,
         status: 'requested',
+        source: 'manual', // staff-added here, vs. the public website widget
       });
       closeModal();
     });
@@ -3431,6 +4189,7 @@
       agendaTab.innerHTML = `<span class="wh-tab-name-text">📅 Agenda</span>` + (pending ? `<span class="wh-count">${pending} nieuw${weekLabel ? ' · ' + weekLabel : ''}</span>` : '');
       agendaTab.addEventListener('click', () => {
         showAgenda = true;
+        showPlanning = false;
         showOverview = false;
         showNieuweKlanten = false;
         showWinterstalling = false;
@@ -3438,6 +4197,20 @@
         render();
       });
       el.appendChild(agendaTab);
+
+      const planningTab = document.createElement('div');
+      planningTab.className = 'wh-tab' + (showPlanning ? ' active' : '');
+      planningTab.innerHTML = `<span class="wh-tab-name-text">🗓️ Planning</span>`;
+      planningTab.addEventListener('click', () => {
+        showPlanning = true;
+        showAgenda = false;
+        showOverview = false;
+        showNieuweKlanten = false;
+        showWinterstalling = false;
+        showKlanten = false;
+        render();
+      });
+      el.appendChild(planningTab);
     }
 
     if(hasFirebaseSync && typeof NIEUWE_KLANTEN_ENABLED !== 'undefined' && NIEUWE_KLANTEN_ENABLED){
@@ -3448,6 +4221,7 @@
         showNieuweKlanten = true;
         showOverview = false;
         showAgenda = false;
+        showPlanning = false;
         showWinterstalling = false;
         showKlanten = false;
         render();
@@ -3465,6 +4239,7 @@
         showWinterstalling = true;
         showOverview = false;
         showAgenda = false;
+        showPlanning = false;
         showNieuweKlanten = false;
         showKlanten = false;
         render();
@@ -3479,6 +4254,7 @@
       showKlanten = true;
       showOverview = false;
       showAgenda = false;
+      showPlanning = false;
       showNieuweKlanten = false;
       showWinterstalling = false;
       render();
@@ -3491,6 +4267,7 @@
     overviewTab.addEventListener('click', () => {
       showOverview = true;
       showAgenda = false;
+      showPlanning = false;
       showNieuweKlanten = false;
       showWinterstalling = false;
       showKlanten = false;
@@ -3505,7 +4282,7 @@
       const spots = warehouseSpots(w);
       const occ = spots.filter(s => s.occupants && s.occupants.length > 0).length;
       const tab = document.createElement('div');
-      tab.className = 'wh-tab' + (!showOverview && !showAgenda && !showNieuweKlanten && !showWinterstalling && !showKlanten && w.id === state.activeWarehouseId ? ' active' : '');
+      tab.className = 'wh-tab' + (!showOverview && !showAgenda && !showPlanning && !showNieuweKlanten && !showWinterstalling && !showKlanten && w.id === state.activeWarehouseId ? ' active' : '');
       const atStart = whIdx === 0;
       const atEnd = whIdx === state.warehouses.length - 1;
       tab.innerHTML = `
@@ -3520,6 +4297,7 @@
         if(e.target.closest('[data-del-wh]') || e.target.closest('[data-edit-wh]') || e.target.closest('[data-move-wh]')) return;
         showOverview = false;
         showAgenda = false;
+        showPlanning = false;
         showNieuweKlanten = false;
         showWinterstalling = false;
         showKlanten = false;
