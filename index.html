@@ -2642,7 +2642,17 @@
   const PLN_HOUR_END = 19;
   const PLN_HOUR_PX = 48;
 
-  function plnIso(d){ return d.toISOString().slice(0,10); }
+  // Local-calendar-date ISO string — deliberately NOT toISOString(), which
+  // converts to UTC first. For any timezone ahead of UTC (like the
+  // Netherlands, UTC+1/+2), local midnight falls on the *previous* UTC day,
+  // so toISOString().slice(0,10) silently returns yesterday's date — which
+  // showed up as "clicking a day opens the day before it".
+  function plnIso(d){
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
   function plnToday(){ return plnIso(new Date()); }
   function plnAddDays(d, n){ const r = new Date(d); r.setDate(r.getDate() + n); return r; }
   function plnMonday(d){
