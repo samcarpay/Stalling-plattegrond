@@ -2667,17 +2667,22 @@
   }
 
   function plnPickupItems(){
-    return appointments.filter(a => a.status !== 'done' && a.date).map(a => ({
-      uid: 'appt-' + a.id,
-      apptId: a.id,
-      kind: 'ophalen',
-      title: (a.source !== 'manual' ? '🌐 ' : '✍️ ') + (a.name || 'Naam onbekend'),
-      sub: a.vehicleDesc || '',
-      startDate: a.date,
-      endDate: a.date,
-      time: a.time || null,
-      endTime: null,
-    }));
+    return appointments.filter(a => a.status !== 'done' && a.date).map(a => {
+      const info = findLinkedInfo(a.linked);
+      const matchedOcc = info ? findMatchingOccupant(info.spot, a) : null;
+      const away = matchedOcc ? !!matchedOcc.away : false;
+      return {
+        uid: 'appt-' + a.id,
+        apptId: a.id,
+        kind: 'ophalen',
+        title: (a.source !== 'manual' ? '🌐 ' : '✍️ ') + (a.name || 'Naam onbekend') + (away ? ' · weg' : ''),
+        sub: a.vehicleDesc || '',
+        startDate: a.date,
+        endDate: a.date,
+        time: a.time || null,
+        endTime: null,
+      };
+    });
   }
   function plnBookingItems(){
     return werkloodsBookings.map(b => ({
@@ -2710,6 +2715,11 @@
     const body = document.getElementById('modalBody');
     body.className = 'modal';
     const info = findLinkedInfo(a.linked);
+    const matchedOcc = info ? findMatchingOccupant(info.spot, a) : null;
+    const away = matchedOcc ? !!matchedOcc.away : false;
+    const locationLine = info
+      ? `Gekoppeld aan <strong>${escapeHtml(info.warehouse.name)}</strong>, plek ${escapeHtml(displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R')))}${away ? ' — <span style="color:var(--ink);font-weight:700;">momenteel weg</span>' : ''}`
+      : '<span style="color:var(--car);">Nog niet gekoppeld aan een plek</span>';
     body.innerHTML = `
       <h3>Ophaalafspraak</h3>
       <div class="sub">${a.source !== 'manual' ? '🌐 Automatisch geboekt via de website' : '✍️ Handmatig toegevoegd door jullie'}</div>
@@ -2718,10 +2728,11 @@
       ${a.vehicleDesc ? `<div class="field"><label>Object / kenteken</label><div style="font-size:13px;color:var(--ink);">${escapeHtml(a.vehicleDesc)}</div></div>` : ''}
       ${a.contact ? `<div class="field"><label>Contact</label><div style="font-size:13px;color:var(--ink);">${escapeHtml(a.contact)}</div></div>` : ''}
       ${a.notes ? `<div class="field"><label>Notities</label><div style="font-size:13px;color:var(--ink);">${escapeHtml(a.notes)}</div></div>` : ''}
-      ${info ? '' : '<div class="sub">Nog niet gekoppeld aan een plek.</div>'}
+      <div class="agenda-link" style="margin-top:2px;">${locationLine}</div>
       <div class="modal-actions">
         <button class="btn ghost" id="plnPickupCloseBtn">Sluiten</button>
-        <button class="btn" id="plnPickupAgendaBtn">Open in Agenda</button>
+        <button class="btn ghost" id="plnPickupAgendaBtn">Open in Agenda</button>
+        ${info ? `<button class="btn" id="plnPickupAwayBtn">${away ? 'Terug gemeld' : 'Markeer als weg'}</button>` : ''}
       </div>
     `;
     overlay.classList.add('show');
@@ -2733,6 +2744,20 @@
       showPlanning = false;
       render();
     });
+    if(info){
+      document.getElementById('plnPickupAwayBtn').addEventListener('click', () => {
+        if(away){
+          closeModal();
+          openReturnConfirmModal(info, matchedOcc);
+        } else if(matchedOcc){
+          matchedOcc.away = true;
+          closeModal();
+          render(); save();
+        } else {
+          alert('Kan niet met zekerheid bepalen welk voertuig in deze plek het betreft (meerdere voertuigen, geen duidelijke overeenkomst met naam of object nummer). Pas de plek zelf handmatig aan om deze klant als weg te markeren.');
+        }
+      });
+    }
   }
 
   function openPlanningBookingModal(existing){
