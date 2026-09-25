@@ -1334,6 +1334,7 @@
         appointments = Object.keys(val).map(k => ({ id: k, ...val[k] }));
         renderTabs();
         if(showAgenda) renderAgendaPage();
+        if(showPlanning) renderPlanningPage();
       }, (error) => {
         console.error('Appointments sync error', error);
       });
@@ -2780,13 +2781,14 @@
         <div class="type-row" id="plnKindRow">
           <div class="type-chip ${kind==='werkloods'?'active':''}" data-kind="werkloods">🛠️ Werkloods</div>
           <div class="type-chip ${kind==='overig'?'active':''}" data-kind="overig">🗂️ Overig</div>
+          ${!existing && appointmentsRef ? '<div class="type-chip" data-kind="ophalen">🚗 Ophalen</div>' : ''}
         </div>
       `;
     }
 
     body.innerHTML = `
       <h3>${existing ? 'Planningsafspraak bewerken' : 'Nieuwe planningsafspraak'}</h3>
-      <div class="sub">Voor een werkloods-boeking (kan meerdere dagen duren) of een andere zakelijke afspraak. Ophaalafspraken van klanten blijf je toevoegen via de Agenda-tab — die verschijnen hier automatisch mee.</div>
+      <div class="sub">Voor een werkloods-boeking (kan meerdere dagen duren), een andere zakelijke afspraak, of een ophaalafspraak voor een klant (kies "Ophalen").</div>
       <div class="field"><label>Soort</label>${chipsHtml()}</div>
       <div class="field">
         <label>Titel / omschrijving</label>
@@ -2829,6 +2831,11 @@
 
     document.querySelectorAll('#plnKindRow [data-kind]').forEach(chip => {
       chip.addEventListener('click', () => {
+        if(chip.getAttribute('data-kind') === 'ophalen'){
+          // pickups live in the appointments list, not the planning bookings — hand off to that form
+          openNewAppointmentModal({ date: document.getElementById('plnStart').value });
+          return;
+        }
         kind = chip.getAttribute('data-kind');
         document.querySelectorAll('#plnKindRow [data-kind]').forEach(c => c.classList.toggle('active', c.getAttribute('data-kind') === kind));
       });
@@ -4147,7 +4154,7 @@
   let pendingPlacementAanvraagId = null;
 
   // ---------- modal: staff manually adds a pickup appointment ----------
-  function openNewAppointmentModal(){
+  function openNewAppointmentModal(prefill){
     const overlay = document.getElementById('overlay');
     const body = document.getElementById('modalBody');
     body.className = 'modal';
@@ -4168,7 +4175,7 @@
       </div>
       <div class="field">
         <label>Ophaaldatum</label>
-        <input type="date" id="naDate" />
+        <input type="date" id="naDate" value="${escapeAttr(prefill?.date || '')}" />
       </div>
       <div class="field">
         <label>Ophaaltijd (optioneel)</label>
@@ -6306,9 +6313,31 @@
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(() => {
+      navigator.serviceWorker.register('sw.js').then((reg) => {
+        // a home-screen app is often resumed rather than reopened — check for a new version then too
+        document.addEventListener('visibilitychange', () => {
+          if(document.visibilityState === 'visible') reg.update().catch(() => {});
+        });
+      }).catch(() => {
         // offline on first-ever load with no cached service worker yet — harmless, just skip
       });
+    });
+
+    // When a new version's service worker takes over, reload once so it shows
+    // right away. Skipped on the very first install (nothing old to replace),
+    // and held back while a modal is open so a half-filled form isn't lost.
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if(!hadController || reloading) return;
+      reloading = true;
+      (function reloadWhenIdle(){
+        if(document.getElementById('overlay')?.classList.contains('show')){
+          setTimeout(reloadWhenIdle, 2000);
+        } else {
+          location.reload();
+        }
+      })();
     });
   }
 </script>
