@@ -417,7 +417,13 @@
   .pln-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:12px 14px;}
   .pln-card-h{font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-bottom:9px;}
 
-  .pln-mini-head{font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:8px;}
+  .pln-mini-head{font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;touch-action:pan-y;}
+  .pln-mini-nav-btn{
+    width:22px;height:22px;border-radius:999px;border:1px solid var(--line);background:var(--card);
+    color:var(--ink-soft);font-size:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .pln-mini-nav-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .pln-mini-cell.is-selected{box-shadow:0 0 0 2px var(--accent) inset;}
   .pln-mini-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}
   .pln-mini-dow{text-align:center;font-size:9.5px;font-weight:700;color:var(--ink-faint);margin-bottom:2px;}
   .pln-mini-cell{
@@ -1368,6 +1374,8 @@
   let showPlanning = false;         // UI-only, not persisted
   let planningView = 'week';        // 'day' | 'week' | 'month' — UI-only, not persisted
   let planningRefDate = new Date(); // anchor date for whichever view is showing — UI-only, not persisted
+  let miniCalRefDate = new Date();  // which month the sidebar mini calendar shows — browsed independently of the main view, UI-only
+  let planningSidebarDayIso = plnIso(new Date()); // which day's items show in the sidebar's day-detail card — UI-only, not persisted
 
   function initWerkloodsSync(){
     if(!hasFirebaseSync) return;
@@ -2917,6 +2925,7 @@
       } else {
         planningRefDate = plnAddDays(planningRefDate, planningView === 'day' ? -1 : -7);
       }
+      miniCalRefDate = new Date(planningRefDate);
       renderPlanningPage();
     });
     toolbar.querySelector('#plnNextBtn').addEventListener('click', () => {
@@ -2925,10 +2934,12 @@
       } else {
         planningRefDate = plnAddDays(planningRefDate, planningView === 'day' ? 1 : 7);
       }
+      miniCalRefDate = new Date(planningRefDate);
       renderPlanningPage();
     });
     toolbar.querySelector('#plnTodayBtn').addEventListener('click', () => {
       planningRefDate = new Date();
+      miniCalRefDate = new Date();
       renderPlanningPage();
     });
     toolbar.querySelectorAll('[data-view]').forEach(btn => {
@@ -2960,12 +2971,6 @@
     const sidebar = document.createElement('div');
     sidebar.className = 'pln-sidebar';
 
-    const miniCard = document.createElement('div');
-    miniCard.className = 'pln-card';
-    const y = planningRefDate.getFullYear();
-    const m = planningRefDate.getMonth();
-    const firstOfMonth = new Date(y, m, 1);
-    const gridStart = plnMonday(firstOfMonth);
     const todayIso = plnToday();
     const monday = plnMonday(planningRefDate);
     const weekIsoSet = new Set([0,1,2,3,4,5,6].map(i => plnIso(plnAddDays(monday, i))));
@@ -2981,6 +2986,16 @@
       }
     });
 
+    // ---- 1. mini calendar ("agenda") — browsed independently of the main
+    // view via the ‹ › buttons or a left/right swipe, so flipping through
+    // months here never disturbs whatever Dag/Week/Maand view is showing ----
+    const miniCard = document.createElement('div');
+    miniCard.className = 'pln-card';
+    const y = miniCalRefDate.getFullYear();
+    const m = miniCalRefDate.getMonth();
+    const firstOfMonth = new Date(y, m, 1);
+    const gridStart = plnMonday(firstOfMonth);
+
     let miniCells = '';
     for(let i = 0; i < 35; i++){
       const d = plnAddDays(gridStart, i);
@@ -2988,11 +3003,13 @@
       const inMonth = d.getMonth() === m;
       const isToday = iso === todayIso;
       const inWeek = planningView === 'week' && weekIsoSet.has(iso);
+      const isSelected = iso === planningSidebarDayIso;
       const dayItems = itemsByDate[iso] || [];
       const cls = ['pln-mini-cell'];
       if(!inMonth) cls.push('out');
       if(inWeek && !isToday) cls.push('in-week');
       if(isToday) cls.push('is-today');
+      if(isSelected) cls.push('is-selected');
       miniCells += `<div class="${cls.join(' ')}" data-mini-date="${iso}">
         <span>${d.getDate()}</span>
         ${dayItems.length ? `<span class="pln-mini-dot" style="background:${PLN_META[dayItems[0].kind].color}"></span>` : ''}
@@ -3000,7 +3017,11 @@
     }
 
     miniCard.innerHTML = `
-      <div class="pln-mini-head">${DUTCH_MONTH_NAMES[m][0].toUpperCase() + DUTCH_MONTH_NAMES[m].slice(1)} ${y}</div>
+      <div class="pln-mini-head">
+        <button class="pln-mini-nav-btn" id="plnMiniPrevBtn">‹</button>
+        <span>${DUTCH_MONTH_NAMES[m][0].toUpperCase() + DUTCH_MONTH_NAMES[m].slice(1)} ${y}</span>
+        <button class="pln-mini-nav-btn" id="plnMiniNextBtn">›</button>
+      </div>
       <div class="pln-mini-grid">
         ${['M','D','W','D','V','Z','Z'].map(l => `<div class="pln-mini-dow">${l}</div>`).join('')}
         ${miniCells}
@@ -3008,22 +3029,43 @@
     `;
     miniCard.querySelectorAll('[data-mini-date]').forEach(cell => {
       cell.addEventListener('click', () => {
-        planningRefDate = plnParseIso(cell.getAttribute('data-mini-date'));
+        // Only picks which day the panel below shows — deliberately leaves
+        // planningRefDate/planningView alone, so clicking a day here works
+        // the same whether you're currently in Dag, Week or Maand mode.
+        planningSidebarDayIso = cell.getAttribute('data-mini-date');
         renderPlanningPage();
       });
     });
+    function shiftMiniMonth(delta){
+      miniCalRefDate = new Date(miniCalRefDate.getFullYear(), miniCalRefDate.getMonth() + delta, 1);
+      renderPlanningPage();
+    }
+    miniCard.querySelector('#plnMiniPrevBtn').addEventListener('click', () => shiftMiniMonth(-1));
+    miniCard.querySelector('#plnMiniNextBtn').addEventListener('click', () => shiftMiniMonth(1));
+    // Swipe left/right to page between months — the iPhone-calendar gesture
+    // this was built for. A tap still reaches the day cells above untouched;
+    // only a clearly-horizontal drag past the threshold counts as a swipe.
+    let miniTouchStartX = null, miniTouchStartY = null;
+    miniCard.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      miniTouchStartX = t.clientX; miniTouchStartY = t.clientY;
+    }, { passive: true });
+    miniCard.addEventListener('touchend', (e) => {
+      if(miniTouchStartX === null) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - miniTouchStartX;
+      const dy = t.clientY - miniTouchStartY;
+      miniTouchStartX = null;
+      if(Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5){
+        shiftMiniMonth(dx < 0 ? 1 : -1);
+      }
+    }, { passive: true });
     sidebar.appendChild(miniCard);
 
-    const legendCard = document.createElement('div');
-    legendCard.className = 'pln-card';
-    legendCard.innerHTML = `
-      <div class="pln-card-h">Soorten afspraken</div>
-      ${Object.keys(PLN_META).map(k => `
-        <div class="pln-legend-row"><span class="pln-legend-dot" style="background:${PLN_META[k].color}"></span>${PLN_META[k].label}</div>
-      `).join('')}
-    `;
-    sidebar.appendChild(legendCard);
+    // ---- 2. the day you clicked in the agenda above ----
+    sidebar.appendChild(renderPlanningSidebarDayCard(planningSidebarDayIso, itemsByDate, todayIso));
 
+    // ---- 3. upcoming ----
     const upcomingCard = document.createElement('div');
     upcomingCard.className = 'pln-card';
     const upcoming = items
@@ -3049,7 +3091,46 @@
     });
     sidebar.appendChild(upcomingCard);
 
+    // ---- 4. legend, at the bottom ----
+    const legendCard = document.createElement('div');
+    legendCard.className = 'pln-card';
+    legendCard.innerHTML = `
+      <div class="pln-card-h">Soorten afspraken</div>
+      ${Object.keys(PLN_META).map(k => `
+        <div class="pln-legend-row"><span class="pln-legend-dot" style="background:${PLN_META[k].color}"></span>${PLN_META[k].label}</div>
+      `).join('')}
+    `;
+    sidebar.appendChild(legendCard);
+
     return sidebar;
+  }
+
+  // The compact "day you clicked in the agenda" card — sits right below the
+  // mini calendar regardless of which Dag/Week/Maand view is active.
+  function renderPlanningSidebarDayCard(iso, itemsByDate, todayIso){
+    const card = document.createElement('div');
+    card.className = 'pln-card';
+    const d = plnParseIso(iso);
+    const heading = `${DUTCH_DAY_NAMES[d.getDay()]} ${d.getDate()} ${DUTCH_MONTH_NAMES[d.getMonth()]}` + (iso === todayIso ? ' · vandaag' : '');
+    const dayItems = (itemsByDate[iso] || []).slice().sort((a, b) => (a.time || '00:00').localeCompare(b.time || '00:00'));
+    card.innerHTML = `
+      <div class="pln-card-h">${escapeHtml(heading)}</div>
+      ${dayItems.length === 0 ? '<div class="pln-empty" style="padding:6px 0;">Geen afspraken op deze dag.</div>' : dayItems.map((it, i) => `
+        <div class="pln-upcoming-item" data-daycard-idx="${i}">
+          <span class="pln-upcoming-bar" style="background:${PLN_META[it.kind].color}"></span>
+          <div style="min-width:0;">
+            <div class="pln-upcoming-when">${it.time ? it.time : (it.endDate !== it.startDate ? 'Hele periode' : 'Hele dag')}</div>
+            <div class="pln-upcoming-title">${escapeHtml(it.title)}</div>
+          </div>
+        </div>
+      `).join('')}
+    `;
+    card.querySelectorAll('[data-daycard-idx]').forEach(row => {
+      row.addEventListener('click', () => {
+        plnClickItem(dayItems[parseInt(row.getAttribute('data-daycard-idx'), 10)]);
+      });
+    });
+    return card;
   }
 
   function renderPlanningWeekView(main, monday){
@@ -3246,8 +3327,11 @@
     grid.innerHTML = cellsHtml;
     grid.querySelectorAll('[data-month-date]').forEach(cell => {
       cell.addEventListener('click', () => {
-        planningRefDate = plnParseIso(cell.getAttribute('data-month-date'));
+        const iso = cell.getAttribute('data-month-date');
+        planningRefDate = plnParseIso(iso);
         planningView = 'day';
+        planningSidebarDayIso = iso;
+        miniCalRefDate = new Date(planningRefDate);
         renderPlanningPage();
       });
     });
