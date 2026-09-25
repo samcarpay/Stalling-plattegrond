@@ -6232,6 +6232,12 @@
 
     firebase.auth().onAuthStateChanged((user) => {
       const gate = document.getElementById('loginGate');
+      if(user && user.isAnonymous){
+        // leftover session from the old anonymous-sign-in setup — not a real
+        // login, so drop it; the resulting null state shows the login gate
+        firebase.auth().signOut();
+        return;
+      }
       if(user){
         gate.style.display = 'none';
         document.getElementById('sheet').style.display = '';
