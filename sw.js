@@ -1,6 +1,6 @@
 // Bump this string whenever you edit index.html and re-deploy, so browsers
 // pick up the new version instead of serving a stale cached copy.
-const CACHE_NAME = 'storage-sites-v85';
+const CACHE_NAME = 'storage-sites-v86';
 
 const APP_SHELL = [
   './',
@@ -52,6 +52,40 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(() => cached);
+    })
+  );
+});
+
+// Push notification from the notifyNewPickup Cloud Function (functions/index.js):
+// a new customer pickup request. Also sets the red count on the app icon.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try{ data = event.data ? event.data.json() : {}; }catch(e){}
+  const tasks = [
+    self.registration.showNotification(data.title || 'Nieuwe ophaalafspraak', {
+      body: data.body || '',
+      icon: './icon-192.png',
+      tag: data.tag,
+      data: { url: './#agenda' },
+    }),
+  ];
+  if(typeof data.badge === 'number' && self.navigator.setAppBadge){
+    tasks.push(self.navigator.setAppBadge(data.badge).catch(() => {}));
+  }
+  event.waitUntil(Promise.all(tasks));
+});
+
+// Tapping the notification opens the app on the Agenda tab.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      const win = wins[0];
+      if(win){
+        win.postMessage('open-agenda');
+        return win.focus();
+      }
+      return self.clients.openWindow(event.notification.data?.url || './');
     })
   );
 });

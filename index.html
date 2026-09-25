@@ -1329,6 +1329,7 @@
     if(!hasFirebaseSync || typeof APPOINTMENTS_PATH === 'undefined' || !APPOINTMENTS_PATH) return;
     try{
       appointmentsRef = firebase.database().ref(APPOINTMENTS_PATH);
+      refreshPushSubscription();
       appointmentsRef.on('value', (snapshot) => {
         const val = snapshot.val() || {};
         appointments = Object.keys(val).map(k => ({ id: k, ...val[k] }));
@@ -1341,6 +1342,125 @@
     }catch(e){
       console.error('Appointments sync failed to start', e);
     }
+  }
+
+  // ---------- push notifications for new customer pickups ----------
+  // The notifyNewPickup Cloud Function (functions/index.js) sends these to
+  // every device that turned them on here. Subscriptions and the "last
+  // opened the Agenda" time (for the red count on the app icon) live under
+  // SYNC_PATH/push, so they get the same login-only database rules.
+  const VAPID_PUBLIC_KEY = 'BPe_35GQQK7ZoPVo46UdsLzA3lpIk2oq13RcOg3ex_v5Nh0OPHn1ZW3VYCgfEWyeeYub_mIFWI1p-pH0NqXcHC8';
+  const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const isIosDevice = /iP(hone|ad|od)/.test(navigator.userAgent);
+  const isStandaloneApp = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  let pushSubscribed = false;
+  let lastSeenWriteAt = 0;
+
+  function pushKey(endpoint){
+    let h1 = 5381, h2 = 52711;
+    for(let i = 0; i < endpoint.length; i++){
+      const c = endpoint.charCodeAt(i);
+      h1 = ((h1 * 33) ^ c) >>> 0;
+      h2 = ((h2 * 31) + c) >>> 0;
+    }
+    return h1.toString(36) + h2.toString(36);
+  }
+
+  function urlB64ToUint8Array(str){
+    const padded = (str + '='.repeat((4 - str.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+    return Uint8Array.from(atob(padded), c => c.charCodeAt(0));
+  }
+
+  async function savePushSubscription(sub){
+    if(!syncRef) return;
+    await syncRef.child('push/subscriptions/' + pushKey(sub.endpoint)).set({
+      ...sub.toJSON(),
+      createdAt: Date.now(),
+      device: navigator.userAgent.slice(0, 160),
+    });
+    pushSubscribed = true;
+  }
+
+  async function enablePushNotifications(){
+    try{
+      // must be the first await, straight from the tap — iOS refuses the prompt otherwise
+      const permission = await Notification.requestPermission();
+      if(permission !== 'granted'){
+        alert('Meldingen zijn niet toegestaan. Je kunt ze later aanzetten via Instellingen → Meldingen → Zwartendijk.');
+        if(showAgenda) renderAgendaPage();
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = (await reg.pushManager.getSubscription())
+        || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY) });
+      await savePushSubscription(sub);
+    }catch(e){
+      console.error('Enabling push failed', e);
+      alert('Meldingen aanzetten is niet gelukt: ' + (e && e.message ? e.message : e));
+    }
+    if(showAgenda) renderAgendaPage();
+  }
+
+  // keeps this device's subscription saved (e.g. after the browser renewed it)
+  async function refreshPushSubscription(){
+    if(!pushSupported || Notification.permission !== 'granted') return;
+    try{
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if(sub){
+        await savePushSubscription(sub);
+        if(showAgenda) renderAgendaPage();
+      }
+    }catch(e){
+      console.error('Refreshing push subscription failed', e);
+    }
+  }
+
+  // called whenever the Agenda is on screen: clears the red count on the icon
+  function markAgendaSeen(){
+    if(document.visibilityState !== 'visible') return;
+    if(navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+    if(!syncRef || Date.now() - lastSeenWriteAt < 30000) return;
+    lastSeenWriteAt = Date.now();
+    syncRef.child('push/lastSeenAgendaAt').set(Date.now());
+  }
+
+  function pushControlEl(){
+    const note = (text) => {
+      const el = document.createElement('span');
+      el.style.cssText = 'align-self:center;font-size:12px;color:var(--ink-soft);';
+      el.textContent = text;
+      return el;
+    };
+    if(!pushSupported){
+      return isIosDevice && !isStandaloneApp
+        ? note('Voeg de app toe aan je beginscherm om meldingen te krijgen.')
+        : null;
+    }
+    if(pushSubscribed) return note('🔔 Meldingen staan aan op dit apparaat');
+    if(Notification.permission === 'denied') return note('Meldingen zijn geblokkeerd — zet ze aan in je instellingen.');
+    const btn = document.createElement('button');
+    btn.className = 'btn ghost small';
+    btn.textContent = '🔔 Meldingen aanzetten';
+    btn.addEventListener('click', enablePushNotifications);
+    return btn;
+  }
+
+  function openAgendaTab(){
+    showAgenda = true;
+    showPlanning = false;
+    showOverview = false;
+    showNieuweKlanten = false;
+    showWinterstalling = false;
+    showKlanten = false;
+    render();
+  }
+
+  if('serviceWorker' in navigator){
+    // the service worker asks for this when a notification is tapped while the app is open
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if(e.data === 'open-agenda' && state) openAgendaTab();
+    });
   }
 
   // ---------- blocked pickup dates ----------
@@ -1450,7 +1570,12 @@
       state = defaultState();
     }
     bindTypes();
-    render();
+    if(location.hash === '#agenda'){
+      history.replaceState(null, '', location.pathname + location.search);
+      openAgendaTab();
+    } else {
+      render();
+    }
     setStatus(hasCloudStorage ? 'opgeslagen' : (hasFirebaseSync ? 'verbinden met sync…' : 'opgeslagen in deze browser (offline)'));
     initFirebaseSync();
   }
@@ -2356,6 +2481,8 @@
       return;
     }
 
+    markAgendaSeen();
+
     const container = document.createElement('div');
     container.className = 'overview';
 
@@ -2367,6 +2494,9 @@
     addBtn.textContent = '+ Nieuwe afspraak';
     addBtn.addEventListener('click', () => openNewAppointmentModal());
     toolbarRow.appendChild(addBtn);
+
+    const pushControl = pushControlEl();
+    if(pushControl) toolbarRow.appendChild(pushControl);
 
     const historyToggle = document.createElement('button');
     historyToggle.className = 'btn ghost small';
@@ -5460,6 +5590,7 @@
                 createdAt: Date.now(),
                 linked: activeWh ? { warehouseId: activeWh.id, spotId: spot.id } : null,
                 status: 'requested',
+                source: 'auto', // not a customer request — no push notification
               });
             }
           });
