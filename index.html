@@ -2546,6 +2546,7 @@
       // ---- currently-away summary — now below the pickup list, since upcoming pickups matter more at a glance ----
       if(awayList.length > 0){
         const awaySection = document.createElement('div');
+        awaySection.id = 'agendaAwaySection';
         awaySection.className = 'overview-section';
         awaySection.style.maxWidth = '640px';
         awaySection.innerHTML = `<h3 class="overview-h">Momenteel weg (${awayList.length})</h3>`;
