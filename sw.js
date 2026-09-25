@@ -1,6 +1,6 @@
 // Bump this string whenever you edit index.html and re-deploy, so browsers
 // pick up the new version instead of serving a stale cached copy.
-const CACHE_NAME = 'storage-sites-v84';
+const CACHE_NAME = 'storage-sites-v85';
 
 const APP_SHELL = [
   './',
@@ -15,7 +15,11 @@ const APP_SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
+    // cache:'reload' skips the browser's HTTP cache — otherwise a fresh
+    // CACHE_NAME could be filled with the previous, still-cached index.html
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.addAll(APP_SHELL.map((url) => new Request(url, { cache: 'reload' })))
+    )
   );
   self.skipWaiting();
 });
