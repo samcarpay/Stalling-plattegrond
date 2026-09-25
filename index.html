@@ -1230,7 +1230,170 @@
   let syncRef = null;      // base ref at SYNC_PATH — parent of both 'data' and 'backups'
   let syncDataRef = null;  // syncRef.child('data') — the live, currently-synced state
   let applyingRemote = false;   // guards against feedback loops while applying an incoming update
-  let suppressNextEcho = false; // set right after our own write, so we don't re-render our own echo
+  let syncBase = null;          // the cloud state this device last saw — the common ancestor for merging
+  let lastSyncedStr = null;     // raw string of syncBase, to skip echoes of what we already have
+  let remoteDeferred = false;   // a cloud update arrived while a modal was open; merged in on close
+  let forceOverwriteNextSync = false; // restore/import/push-to-cloud: replace the cloud copy, don't merge
+
+  // ---------- merging changes from several devices ----------
+  // Everything is stored as one JSON blob, so a plain overwrite would throw
+  // away whatever another device changed in the meantime. Instead, every
+  // save and every incoming update does a three-way merge: base (what this
+  // device last saw in the cloud), local (this device now) and remote (the
+  // cloud now). Arrays of objects with an id (warehouses, rows, spots) are
+  // merged item by item; when both sides changed the same field, this
+  // device's edit wins.
+  function sameJson(a, b){ return a === b || JSON.stringify(a) === JSON.stringify(b); }
+  function isPlainObj(v){ return v !== null && typeof v === 'object' && !Array.isArray(v); }
+  function isKeyedArray(a){ return Array.isArray(a) && a.every(x => isPlainObj(x) && x.id != null); }
+
+  function merge3(base, local, remote){
+    if(sameJson(local, remote)) return local;
+    if(sameJson(base, local)) return remote;
+    if(sameJson(base, remote)) return local;
+    // both sides changed it
+    if(local === undefined) return remote; // deleted here, edited there — keep the edit
+    if(remote === undefined) return local;
+    if(isPlainObj(local) && isPlainObj(remote)){
+      const b = isPlainObj(base) ? base : {};
+      const out = {};
+      new Set([...Object.keys(local), ...Object.keys(remote)]).forEach(k => {
+        const v = merge3(b[k], local[k], remote[k]);
+        if(v !== undefined) out[k] = v;
+      });
+      return out;
+    }
+    if(isKeyedArray(local) && isKeyedArray(remote) && (local.length || remote.length)){
+      return mergeKeyedArrays(isKeyedArray(base) ? base : [], local, remote);
+    }
+    return local; // same field changed on both devices — this device's edit wins
+  }
+
+  function mergeKeyedArrays(base, local, remote){
+    const byId = (arr) => new Map(arr.map(x => [x.id, x]));
+    const bm = byId(base), lm = byId(local), rm = byId(remote);
+    const ids = (arr) => arr.map(x => x.id);
+    // keep the order of whichever side rearranged/added/removed items, then
+    // slot in the other side's new items after their neighbour
+    const localChangedOrder = !sameJson(ids(base), ids(local));
+    const order = ids(localChangedOrder ? local : remote);
+    const other = ids(localChangedOrder ? remote : local);
+    other.forEach((id, i) => {
+      if(order.includes(id)) return;
+      const prev = other.slice(0, i).reverse().find(p => order.includes(p));
+      order.splice(prev === undefined ? 0 : order.indexOf(prev) + 1, 0, id);
+    });
+    return order.map(id => merge3(bm.get(id), lm.get(id), rm.get(id))).filter(x => x !== undefined);
+  }
+
+  // where each id sits, e.g. "warehouses/w1/left/r2/spots" — to spot moves
+  function idLocations(tree){
+    const locs = new Map();
+    (function walk(node, path){
+      if(Array.isArray(node)){
+        const keyed = node.length && isKeyedArray(node);
+        node.forEach((x, i) => {
+          if(keyed) locs.set(x.id, path);
+          walk(x, path + '/' + (keyed ? x.id : i));
+        });
+      } else if(isPlainObj(node)){
+        Object.keys(node).forEach(k => walk(node[k], path + '/' + k));
+      }
+    })(tree, '');
+    return locs;
+  }
+
+  // An item moved on one device (e.g. a spot dragged to another row) while
+  // edited on the other can end up in both places — keep one copy, in the
+  // spot this device put it, else where the other device put it.
+  function dropDuplicateIds(merged, local, remote){
+    const found = new Map();
+    (function walk(node, path){
+      if(Array.isArray(node)){
+        const keyed = node.length && isKeyedArray(node);
+        node.forEach((x, i) => {
+          if(keyed){
+            if(!found.has(x.id)) found.set(x.id, []);
+            found.get(x.id).push({ arr: node, path });
+          }
+          walk(x, path + '/' + (keyed ? x.id : i));
+        });
+      } else if(isPlainObj(node)){
+        Object.keys(node).forEach(k => walk(node[k], path + '/' + k));
+      }
+    })(merged, '');
+    const dups = [...found].filter(([, places]) => places.length > 1);
+    if(!dups.length) return;
+    const lLocs = idLocations(local), rLocs = idLocations(remote);
+    dups.forEach(([id, places]) => {
+      const keep = places.find(p => p.path === lLocs.get(id)) || places.find(p => p.path === rLocs.get(id)) || places[0];
+      places.forEach(p => {
+        if(p === keep) return;
+        const idx = p.arr.findIndex(x => x.id === id);
+        if(idx !== -1) p.arr.splice(idx, 1);
+      });
+    });
+  }
+
+  function mergeStates(base, local, remote){
+    const merged = merge3(base, local, remote);
+    if(merged === local || merged === remote) return merged;
+    // merge3 reuses unchanged subtrees; copy before fixing duplicates in place
+    const out = JSON.parse(JSON.stringify(merged));
+    dropDuplicateIds(out, local, remote);
+    return out;
+  }
+
+  // Merge a cloud update into this device's state (or just note it, if a
+  // modal is open — closeModal() picks it up).
+  function absorbRemote(str){
+    if(!str || str === lastSyncedStr) return;
+    let parsed;
+    try{ parsed = migrate(JSON.parse(str)); }catch(e){ return; }
+    if(!parsed) return;
+    // don't yank the rug out from under an in-progress edit
+    if(document.getElementById('overlay').classList.contains('show')){ remoteDeferred = true; return; }
+    const merged = syncBase && state ? mergeStates(syncBase, state, parsed) : parsed;
+    syncBase = JSON.parse(JSON.stringify(parsed));
+    lastSyncedStr = str;
+    if(state && merged.warehouses.find(w => w.id === state.activeWarehouseId)){
+      merged.activeWarehouseId = state.activeWarehouseId; // which warehouse you're looking at stays yours
+    }
+    applyingRemote = true;
+    state = merged;
+    if(!state.warehouses.find(w => w.id === state.activeWarehouseId)){
+      state.activeWarehouseId = state.warehouses[0]?.id;
+    }
+    bindTypes();
+    render();
+    setStatus('zojuist gesynchroniseerd');
+    applyingRemote = false;
+  }
+
+  // Save this device's changes by merging them into the current cloud copy
+  // (a transaction, so two devices saving at once can't clobber each other).
+  function syncToCloud(){
+    if(!hasFirebaseSync || !syncDataRef) return Promise.resolve(false);
+    const force = forceOverwriteNextSync;
+    forceOverwriteNextSync = false;
+    return new Promise((resolve) => {
+      syncDataRef.transaction((currentStr) => {
+        if(force) return JSON.stringify(state);
+        if(currentStr == null) return; // cloud empty or not loaded yet — never auto-push (see initFirebaseSync)
+        let remote;
+        try{ remote = migrate(JSON.parse(currentStr)); }catch(e){ return; }
+        if(!remote) return;
+        const merged = syncBase ? mergeStates(syncBase, state, remote) : state;
+        const out = JSON.stringify(merged);
+        return out === currentStr ? undefined : out; // undefined = nothing to write
+      }, (error, committed, snapshot) => {
+        if(error){ console.error('Sync failed', error); resolve(false); return; }
+        const val = snapshot && snapshot.val();
+        if(val) absorbRemote(val);
+        resolve(!!val);
+      }, false);
+    });
+  }
 
   function initFirebaseAppOnce(){
     if(!firebase.apps || !firebase.apps.length){
@@ -1283,7 +1446,6 @@
       syncDataRef.on('value', (snapshot) => {
         connected = true;
         clearTimeout(timeoutId);
-        if(suppressNextEcho){ suppressNextEcho = false; return; }
         const remote = snapshot.val();
         if(!remote){
           // Nothing at the live-data path. This does NOT automatically push
@@ -1294,19 +1456,7 @@
           setStatus(`cloud is leeg — dit apparaat heeft ${n} plek${n===1?"":"ken"} lokaal; open "Back-ups" om ze te versturen als je het zeker weet`);
           return;
         }
-        const parsed = migrate(JSON.parse(remote));
-        if(!parsed) return;
-        // don't yank the rug out from under an in-progress edit
-        if(document.getElementById('overlay').classList.contains('show')) return;
-        applyingRemote = true;
-        state = parsed;
-        if(!state.warehouses.find(w => w.id === state.activeWarehouseId)){
-          state.activeWarehouseId = state.warehouses[0]?.id;
-        }
-        bindTypes();
-        render();
-        setStatus('zojuist gesynchroniseerd');
-        applyingRemote = false;
+        absorbRemote(remote);
       }, (error) => {
         connected = true;
         clearTimeout(timeoutId);
@@ -1594,10 +1744,7 @@
           setStatus(hasFirebaseSync ? 'lokaal opgeslagen' : 'opgeslagen in deze browser (offline)');
         }
         if(hasFirebaseSync && syncDataRef){
-          suppressNextEcho = true;
-          syncDataRef.set(JSON.stringify(state))
-            .then(() => setStatus('gesynchroniseerd tussen apparaten'))
-            .catch(() => setStatus('lokaal opgeslagen — sync mislukt (offline?)'));
+          syncToCloud().then((ok) => setStatus(ok ? 'gesynchroniseerd tussen apparaten' : 'lokaal opgeslagen — sync mislukt (offline?)'));
         }
         maybeAutoBackup();
       }catch(e){
@@ -1743,10 +1890,8 @@
         () => {
           createBackup();
           if(syncDataRef){
-            suppressNextEcho = true;
-            syncDataRef.set(JSON.stringify(state))
-              .then(() => setStatus('naar cloud gestuurd'))
-              .catch(() => setStatus('versturen mislukt — controleer je verbinding'));
+            forceOverwriteNextSync = true;
+            syncToCloud().then((ok) => setStatus(ok ? 'naar cloud gestuurd' : 'versturen mislukt — controleer je verbinding'));
           }
         }
       );
@@ -1802,6 +1947,7 @@
                 }
                 bindTypes();
                 body.className = 'modal';
+                forceOverwriteNextSync = true; // a restore replaces the cloud copy, not merges into it
                 render(); save();
               }
             );
@@ -5624,6 +5770,11 @@
 
   function closeModal(){
     document.getElementById('overlay').classList.remove('show');
+    if(remoteDeferred && syncDataRef){
+      // another device saved while this modal was open — merge it in now
+      remoteDeferred = false;
+      setTimeout(() => syncDataRef.once('value', (snap) => absorbRemote(snap.val())), 0);
+    }
     pendingPlacementAanvraagId = null;
     pendingPlacementWaitlistId = null;
   }
@@ -6141,6 +6292,7 @@
             state.activeWarehouseId = state.warehouses[0]?.id;
           }
           bindTypes();
+          forceOverwriteNextSync = true; // an import replaces the cloud copy, not merges into it
           render(); save();
         };
 
