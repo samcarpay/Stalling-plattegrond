@@ -174,3 +174,78 @@ exports.nightlyBackup = onSchedule(
     }
   }
 );
+
+// ─────────────────────────────────────────────────────────────────
+// MORNING REMINDER: TODAY'S PICKUPS NOT YET MARKED AWAY
+//
+// Every morning at 07:00 (Amsterdam time): if any of today's pickups
+// (not done yet) isn't marked "weg" in its spot, every device with
+// notifications on gets one reminder listing them. Nothing is sent when
+// all of today's pickups are already marked away, or there are none.
+// Uses the same matching as the Agenda (findMatchingOccupant in app.js).
+// ─────────────────────────────────────────────────────────────────
+
+function findLinkedSpot(plattegrond, linked){
+  if(!linked) return null;
+  const w = (plattegrond.warehouses || []).find(x => x.id === linked.warehouseId);
+  if(!w) return null;
+  for(const side of ['left', 'right']){
+    for(const row of (w[side] || [])){
+      const s = (row.spots || []).find(sp => sp.id === linked.spotId);
+      if(s) return s;
+    }
+  }
+  return null;
+}
+
+function findMatchingOccupant(spot, appt){
+  if(!spot || !spot.occupants || spot.occupants.length === 0) return null;
+  if(spot.occupants.length === 1) return spot.occupants[0];
+  const apptObjNum = (appt.vehicleDesc || '').trim().toLowerCase();
+  if(apptObjNum){
+    const byObjNum = spot.occupants.find(o => (o.objectNummer || '').trim().toLowerCase() === apptObjNum);
+    if(byObjNum) return byObjNum;
+  }
+  const apptName = (appt.name || '').trim().toLowerCase();
+  if(apptName){
+    const byName = spot.occupants.find(o => (o.name || '').trim().toLowerCase() === apptName);
+    if(byName) return byName;
+  }
+  return null;
+}
+
+exports.morningAwayReminder = onSchedule(
+  {
+    schedule: 'every day 07:00',
+    timeZone: 'Europe/Amsterdam',
+    region: 'europe-west1',
+    secrets: [VAPID_PRIVATE_KEY],
+    retryCount: 0,
+  },
+  async () => {
+    const db = admin.database();
+    const [dataSnap, apptsSnap] = await Promise.all([
+      db.ref(`${SYNC_PATH}/data`).once('value'),
+      db.ref('pickup-appointments').once('value'),
+    ]);
+    const plattegrond = JSON.parse(dataSnap.val() || '{}');
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' }); // YYYY-MM-DD
+
+    const notAway = Object.values(apptsSnap.val() || {})
+      .filter(a => a && a.status !== 'done' && a.date === today)
+      .filter(a => {
+        const occ = findMatchingOccupant(findLinkedSpot(plattegrond, a.linked), a);
+        return !(occ && occ.away);
+      });
+    if(!notAway.length) return;
+
+    const names = notAway.map(a => (a.name || 'onbekend') + (a.time ? ` (${a.time})` : '') + (a.linked ? '' : ' — nog niet gekoppeld'));
+    const shown = names.slice(0, 4).join(', ') + (names.length > 4 ? ` en nog ${names.length - 4}` : '');
+    await sendToAllDevices({
+      title: `Vandaag ${notAway.length} ophaling${notAway.length === 1 ? '' : 'en'} nog niet als weg gemarkeerd`,
+      body: shown,
+      tag: `morning-away-${today}`,
+    });
+    logger.info('Morning reminder sent', notAway.length);
+  }
+);
