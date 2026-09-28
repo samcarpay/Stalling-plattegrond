@@ -16,7 +16,7 @@ follow it yourself, or hand it to whoever helps you.
 | **Logins** for the app | Firebase → Authentication → Users (email + password) | Not backed up — recreate by hand if ever needed |
 | **Cloud Functions** (notifications, nightly backup, morning reminder) | `functions/` in the repo, running in Firebase (europe-west1, Blaze plan) | |
 | **Secrets** | Firebase secret storage: `VAPID_PRIVATE_KEY` (push notifications), `GITHUB_BACKUP_TOKEN` (backups) | Not backed up on purpose — both can be made new |
-| **Nightly data backups** | Private GitHub repo `samcarpay/Stalling-backups` → `backups/YYYY/MM-DD/` | Daily 30 days, weekly 1 year, monthly after |
+| **Nightly backups** | Private GitHub repo `samcarpay/Stalling-backups` → `backups/YYYY/MM-DD/`: `plattegrond.json` (floor plan), `agenda.json` (Agenda, blocked dates, Planning), `app-code.zip` (this repo as it was that day) | Daily 30 days, weekly 1 year, monthly after |
 | **Booking form, contract system** (booking-widget, klant.html, admin.html, onderteken.html) | Your own website `zwartendijkstalling.nl` — **not in this repo** | Make sure your web host keeps a backup of those |
 
 ### What's in the database
@@ -105,11 +105,18 @@ Longest scenario. Do it in this order.
 9. **Booking form and contract system** on zwartendijkstalling.nl use the same
    Firebase project — update their config too.
 
+## C2. This app repo is deleted or messed up (the backup repo is fine)
+
+1. `Stalling-backups` → the most recent day folder → `app-code.zip` → download.
+2. Unzip it, create the repo again (same name, **public**), and upload the
+   files (or ask Claude to push them). Settings → Pages → deploy from `main`.
+   The address stays the same, so phones keep working.
+
 ## D. The GitHub account is gone
 
 1. New GitHub account (or ask GitHub support first).
 2. New repo, then push the Mac copy (`~/code/Stalling-plattegrond`) or a
-   downloaded ZIP to it. Settings → Pages → deploy from `main`.
+   ZIP you kept outside GitHub to it. Settings → Pages → deploy from `main`.
 3. New private `Stalling-backups` repo; in `functions/index.js` update
    `BACKUP_REPO`; new token as in C.6; `firebase deploy --only functions`.
 4. Phones: remove the old home-screen app and add the new address.

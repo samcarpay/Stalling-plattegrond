@@ -98,6 +98,7 @@ exports.notifyNewPickup = onValueCreated(
 //                                          "Importeren"
 //   backups/2026/09-25/agenda.json       — pickup appointments, blocked
 //                                          dates and planning bookings
+//   backups/2026/09-25/app-code.zip      — the app repo as it was that day
 // Older backups are thinned out: every day for 30 days, then one per
 // week up to a year back, then one per month (they stay in git history).
 // If it fails, every device with notifications on gets a message.
@@ -108,6 +109,7 @@ exports.notifyNewPickup = onValueCreated(
 
 const GITHUB_BACKUP_TOKEN = defineSecret('GITHUB_BACKUP_TOKEN');
 const BACKUP_REPO = 'samcarpay/Stalling-backups';
+const APP_REPO = 'samcarpay/Stalling-plattegrond'; // public, so its ZIP needs no token
 
 async function putGithubFile(token, path, content, message){
   const url = `https://api.github.com/repos/${BACKUP_REPO}/contents/${path}`;
@@ -213,6 +215,15 @@ exports.nightlyBackup = onSchedule(
         blockedDates: blockedSnap.val() || {},
         planningBookings: planningSnap.val() || {},
       }, null, 1), `Back-up ${y}-${m}-${d}: agenda`);
+
+      // the app itself as it was today (code, rules, RESTORE.md) — git stores
+      // an unchanged ZIP only once, so this costs next to nothing
+      const zipRes = await fetch(`https://api.github.com/repos/${APP_REPO}/zipball/main`, {
+        headers: { 'User-Agent': 'stalling-plattegrond-backup' },
+      });
+      if(!zipRes.ok) throw new Error(`GitHub ${zipRes.status} downloading the app's code`);
+      const zip = Buffer.from(await zipRes.arrayBuffer());
+      await putGithubFile(token, `${folder}/app-code.zip`, zip, `Back-up ${y}-${m}-${d}: app code`);
       logger.info('Backup saved', folder, raw.length, 'bytes of floor plan');
       await statusRef.update({ lastSuccessAt: Date.now(), lastSuccessFolder: folder, lastError: null });
 
