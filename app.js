@@ -2026,6 +2026,22 @@
     overlay.classList.add('show');
     document.getElementById('plnTitle').focus();
 
+    // End date follows the start date: a one-day booking stays one day, and
+    // the end can never be picked before the start. A multi-day range is
+    // kept as long as it's still valid.
+    const plnStartEl = document.getElementById('plnStart');
+    const plnEndEl = document.getElementById('plnEnd');
+    let plnPrevStart = plnStartEl.value;
+    plnEndEl.min = plnStartEl.value;
+    plnStartEl.addEventListener('change', () => {
+      const start = plnStartEl.value;
+      if(start && (!plnEndEl.value || plnEndEl.value === plnPrevStart || plnEndEl.value < start)){
+        plnEndEl.value = start;
+      }
+      plnEndEl.min = start;
+      plnPrevStart = start;
+    });
+
     document.querySelectorAll('#plnKindRow [data-kind]').forEach(chip => {
       chip.addEventListener('click', () => {
         if(chip.getAttribute('data-kind') === 'ophalen'){
