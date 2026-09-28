@@ -98,6 +98,8 @@ exports.notifyNewPickup = onValueCreated(
 //                                          "Importeren"
 //   backups/2026/09-25/agenda.json       — pickup appointments, blocked
 //                                          dates and planning bookings
+// Older backups are thinned out: every day for 30 days, then one per
+// week up to a year back, then one per month (they stay in git history).
 // If it fails, every device with notifications on gets a message.
 //
 // The GitHub access token lives in Firebase's secret storage as
@@ -124,6 +126,57 @@ async function putGithubFile(token, path, content, message){
     body: JSON.stringify({ message, content: Buffer.from(content).toString('base64'), sha }),
   });
   if(!res.ok) throw new Error(`GitHub ${res.status} for ${path}: ${(await res.text()).slice(0, 300)}`);
+}
+
+// Which backup days to thin out. Keeps every day for the last 30 days,
+// then the earliest backup of each week up to a year back, then the
+// earliest of each month. dates: 'YYYY-MM-DD' strings; today likewise.
+function selectBackupsToDelete(dates, today){
+  const dayMs = 86400000;
+  const utc = (d) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+  const weekKey = (d) => { const t = utc(d); const dow = (new Date(t).getUTCDay() + 6) % 7; return new Date(t - dow * dayMs).toISOString().slice(0, 10); };
+  const sorted = [...new Set(dates)].sort();
+  const firstOf = (keyFn) => {
+    const seen = new Set();
+    return new Set(sorted.filter(d => { const k = keyFn(d); if(seen.has(k)) return false; seen.add(k); return true; }));
+  };
+  const firstOfWeek = firstOf(weekKey);
+  const firstOfMonth = firstOf(d => d.slice(0, 7));
+  return sorted.filter(d => {
+    const age = Math.round((utc(today) - utc(d)) / dayMs);
+    if(age < 30) return false;
+    if(age < 365) return !firstOfWeek.has(d);
+    return !firstOfMonth.has(d);
+  });
+}
+
+async function pruneOldBackups(token, today){
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'stalling-plattegrond-backup',
+  };
+  const api = (path, opts) => fetch(`https://api.github.com/repos/${BACKUP_REPO}${path}`, { headers, ...opts });
+  const repoRes = await api('');
+  if(!repoRes.ok) throw new Error(`GitHub ${repoRes.status} reading repo`);
+  const branch = (await repoRes.json()).default_branch;
+  const treeRes = await api(`/git/trees/${branch}?recursive=1`);
+  if(!treeRes.ok) throw new Error(`GitHub ${treeRes.status} listing backups`);
+  const files = (await treeRes.json()).tree
+    .filter(f => f.type === 'blob' && /^backups\/\d{4}\/\d{2}-\d{2}\//.test(f.path));
+  const dateOf = (path) => { const [, y, md] = path.split('/'); return `${y}-${md}`; };
+  const toDelete = new Set(selectBackupsToDelete(files.map(f => dateOf(f.path)), today));
+  let deleted = 0;
+  for(const f of files.filter(f => toDelete.has(dateOf(f.path)))){
+    const res = await api(`/contents/${f.path}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ message: `Uitdunnen: ${dateOf(f.path)}`, sha: f.sha, branch }),
+    });
+    if(!res.ok) throw new Error(`GitHub ${res.status} deleting ${f.path}`);
+    deleted++;
+  }
+  return { days: toDelete.size, files: deleted };
 }
 
 exports.nightlyBackup = onSchedule(
@@ -162,6 +215,15 @@ exports.nightlyBackup = onSchedule(
       }, null, 1), `Back-up ${y}-${m}-${d}: agenda`);
       logger.info('Backup saved', folder, raw.length, 'bytes of floor plan');
       await statusRef.update({ lastSuccessAt: Date.now(), lastSuccessFolder: folder, lastError: null });
+
+      // thinning out never fails the backup itself — it just tries again tomorrow
+      try{
+        const pruned = await pruneOldBackups(token, `${y}-${m}-${d}`);
+        await statusRef.update({ lastPruneAt: Date.now(), lastPruned: pruned, lastPruneError: null });
+      }catch(pruneErr){
+        logger.error('Thinning out old backups failed', pruneErr.message);
+        await statusRef.update({ lastPruneError: String(pruneErr.message).slice(0, 300), lastPruneErrorAt: Date.now() }).catch(() => {});
+      }
     }catch(err){
       logger.error('Nightly backup failed', err.message);
       await statusRef.update({ lastError: String(err.message).slice(0, 500), lastErrorAt: Date.now() }).catch(() => {});
