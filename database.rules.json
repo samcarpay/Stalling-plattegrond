@@ -1,0 +1,23 @@
+{
+  "rules": {
+    "Plattegrond-111ws-qbh3Tm791": {
+      ".read": "auth != null && auth.provider != 'anonymous'",
+      ".write": "auth != null && auth.provider != 'anonymous'"
+    },
+    "pickup-appointments": {
+      ".read": "auth != null && auth.provider != 'anonymous'",
+      ".write": "auth != null && auth.provider != 'anonymous'",
+      "$apptId": {
+        ".write": "(auth != null && auth.provider != 'anonymous') || !data.exists()"
+      }
+    },
+    "blocked-dates": {
+      ".read": true,
+      ".write": "auth != null && auth.provider != 'anonymous'"
+    },
+    "werkloods-bookings": {
+      ".read": "auth != null && auth.provider != 'anonymous'",
+      ".write": "auth != null && auth.provider != 'anonymous'"
+    }
+  }
+}
