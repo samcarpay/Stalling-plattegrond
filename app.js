@@ -3344,12 +3344,6 @@
     const t = guessTypeKeyFor(aanvraag.categorie);
     if(TYPES[t]) spot.type = t;
 
-    const notesParts = [];
-    if(aanvraag.categorie) notesParts.push(aanvraag.categorie);
-    if(aanvraag.merk || aanvraag.type) notesParts.push(`${aanvraag.merk || ''} ${aanvraag.type || ''}`.trim());
-    if(aanvraag.lengte && aanvraag.breedte) notesParts.push(`${aanvraag.lengte}m × ${aanvraag.breedte}m`);
-    if(aanvraag.adres) notesParts.push(`${aanvraag.adres}, ${aanvraag.postcode || ''} ${aanvraag.woonplaats || ''}`.trim());
-
     pendingPlacementAanvraagId = aanvraag.id;
     openSpotModal(null, spot, null, null, null, result.tagPrefix, {
       name: `${aanvraag.voornaam || ''} ${aanvraag.achternaam || ''}`.trim(),
@@ -3358,7 +3352,7 @@
       phone: aanvraag.telefoon || '',
       objectNummer: aanvraag.objectnummer || '',
       since: aanvraag.startdatumIso || '',
-      notes: notesParts.join(' · '),
+      // notes stay empty — vehicle and address details are in the signed contract
     });
   }
 
