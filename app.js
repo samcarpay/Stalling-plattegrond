@@ -3938,7 +3938,7 @@
     const removedCount = row.spots.length - activeCount;
     const countLabel = `${activeCount} bay${activeCount===1?'':'s'}` + (removedCount ? ` · ${removedCount} removed` : '');
     head.innerHTML = `
-      <span class="row-tag">${rowLabel(sideName, idx, hasAisle)}</span>
+      <span class="row-tag">${row.name ? escapeHtml(row.name) : rowLabel(sideName, idx, hasAisle)}</span>
       <span style="font-size:10.5px;color:var(--ink-faint);font-family:var(--font-display)">${countLabel}</span>
       <div class="row-actions">${actionsHtml}</div>
     `;
@@ -5169,7 +5169,7 @@
         });
       } else {
         w.left.forEach((row, i) => {
-          html += printRowHtml(row, `Rij ${i+1}`, '');
+          html += printRowHtml(row, row.name || `Rij ${i+1}`, '');
         });
       }
 
