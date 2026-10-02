@@ -249,13 +249,15 @@ exports.nightlyBackup = onSchedule(
 );
 
 // ─────────────────────────────────────────────────────────────────
-// MORNING REMINDER: TODAY'S PICKUPS NOT YET MARKED AWAY
-//
-// Every morning at 07:00 (Amsterdam time): if any of today's pickups
-// (not done yet) isn't marked "weg" in its spot, every device with
-// notifications on gets one reminder listing them. Nothing is sent when
-// all of today's pickups are already marked away, or there are none.
-// Uses the same matching as the Agenda (findMatchingOccupant in app.js).
+// MORNING REMINDERS (07:00 Amsterdam time), to every device with
+// notifications on:
+//   1. Today's pickups not yet marked away — if any of today's pickups
+//      (not done yet) isn't marked "weg" in its spot. Nothing is sent when
+//      all are already marked away, or there are none. Uses the same
+//      matching as the Agenda (findMatchingOccupant in app.js).
+//   2. Today's planning — werkloods and overige afspraken that start today
+//      (a multi-day booking is only mentioned on its first day). Nothing
+//      is sent on a day without any.
 // ─────────────────────────────────────────────────────────────────
 
 function findLinkedSpot(plattegrond, linked){
@@ -287,6 +289,8 @@ function findMatchingOccupant(spot, appt){
   return null;
 }
 
+// (name kept from when it only did the pickup reminder — renaming would
+// create a second scheduled job)
 exports.morningAwayReminder = onSchedule(
   {
     schedule: 'every day 07:00',
@@ -297,12 +301,32 @@ exports.morningAwayReminder = onSchedule(
   },
   async () => {
     const db = admin.database();
-    const [dataSnap, apptsSnap] = await Promise.all([
+    const [dataSnap, apptsSnap, planningSnap] = await Promise.all([
       db.ref(`${SYNC_PATH}/data`).once('value'),
       db.ref('pickup-appointments').once('value'),
+      db.ref('werkloods-bookings').once('value'),
     ]);
     const plattegrond = JSON.parse(dataSnap.val() || '{}');
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' }); // YYYY-MM-DD
+
+    // 2. today's planning (sent first so the pickup reminder ends up on top)
+    const planning = Object.values(planningSnap.val() || {})
+      .filter(b => b && b.startDate === today)
+      .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+    if(planning.length){
+      const lines = planning.map(b => {
+        const kind = b.kind === 'overig' ? 'Overig' : 'Werkloods';
+        const time = b.startTime ? ` (${b.startTime}${b.endTime ? '–' + b.endTime : ''})` : '';
+        return `${kind}: ${b.title || 'zonder titel'}${time}`;
+      });
+      await sendToAllDevices({
+        title: `Vandaag in de planning: ${planning.length} afspra${planning.length === 1 ? 'ak' : 'ken'}`,
+        body: lines.slice(0, 4).join('\n') + (lines.length > 4 ? `\nen nog ${lines.length - 4}` : ''),
+        tag: `morning-planning-${today}`,
+        open: 'planning',
+      });
+      logger.info('Morning planning reminder sent', planning.length);
+    }
 
     const notAway = Object.values(apptsSnap.val() || {})
       .filter(a => a && a.status !== 'done' && a.date === today)
