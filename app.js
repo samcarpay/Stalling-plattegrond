@@ -2565,18 +2565,17 @@
   // OTHER than the one given — used to show "this customer also currently
   // holds a spot elsewhere" without needing a separate manual link, since
   // the outdoor bay itself doesn't stay reserved for them over winter.
-  function findOtherBaysWithObjectNummer(objectNummer, excludeWarehouseId){
+  function findOtherBaysWithObjectNummer(objectNummer, excludeSpotId){
     const q = (objectNummer || '').trim().toLowerCase();
     if(!q) return [];
     const matches = [];
     state.warehouses.forEach(w => {
-      if(w.id === excludeWarehouseId) return;
-      const hasAisle = w.layout !== 'single';
       const sides = warehouseSides(w);
       sides.forEach(([key, tagPrefix]) => {
         w[key].forEach(row => {
           row.spots.forEach(spot => {
-            if(spot.removed || spot.isDoor) return;
+            // skips only the bay itself — the other spot may be in the same warehouse
+            if(spot.removed || spot.isDoor || spot.id === excludeSpotId) return;
             (spot.occupants || []).forEach(o => {
               if((o.objectNummer || '').trim().toLowerCase() === q){
                 matches.push({ warehouse: w, spot, tagPrefix });
@@ -3047,7 +3046,7 @@
       const t = TYPES[r.spot.type] || { color:'#7A7A7A', label:'Onbekend' };
       const tag = displayTag(r.spot, r.tagPrefix);
       const o = r.occupant;
-      const elsewhere = findOtherBaysWithObjectNummer(o.objectNummer, r.warehouse.id);
+      const elsewhere = findOtherBaysWithObjectNummer(o.objectNummer, r.spot.id);
 
       const card = document.createElement('div');
       card.className = 'agenda-card';
@@ -3843,7 +3842,7 @@
     ).join('')
       + `<div class="legend-item"><span class="swatch" style="background:var(--paper-line)"></span>Lege plek</div>`
       + `<div class="legend-item"><span class="swatch" style="background:var(--trailer)"></span>⏱ Langer dan 1 jaar</div>`
-      + (showBadgeLegend ? `<div class="legend-item"><span class="swatch" style="background:#3c6e9e"></span>❄️ Heeft ook een plek elders (bijv. andere loods voor de winter)</div>` : '');
+      + (showBadgeLegend ? `<div class="legend-item"><span class="swatch" style="background:#3c6e9e"></span>❄️ Heeft ook een andere plek (bijv. voor de winter)</div>` : '');
   }
 
   function rowLabel(sideName, idx, hasAisle){
@@ -3991,8 +3990,8 @@
     return (spot.label && spot.label.trim()) ? spot.label.trim() : autoTag(tagPrefix, spot.seq);
   }
 
-  // Finds whether any occupant of this spot also currently holds a bay in
-  // ANY other warehouse (matched by objectNummer) — e.g. a customer who
+  // Finds whether any occupant of this spot also currently holds another
+  // bay, in any warehouse including this one (matched by objectNummer) — e.g. a customer who
   // moves from Buiten Boven to Buiten Beneden for winter, or from an
   // outdoor bay into a Winter warehouse's aisle. Returns the first match
   // found (warehouse + bay tag), or null if there isn't one, so the badge
@@ -4047,20 +4046,20 @@
     return null;
   }
 
-  function findOccupantElsewhere(spot, excludeWarehouseId){
+  function findOccupantElsewhere(spot){
     const objNums = (spot.occupants || []).map(o => (o.objectNummer || '').trim().toLowerCase()).filter(Boolean);
     if(spot.winterKlant && spot.winterKlant.objectNummer){
       objNums.push(spot.winterKlant.objectNummer.trim().toLowerCase());
     }
     if(objNums.length === 0) return null;
     for(const w of state.warehouses){
-      if(w.id === excludeWarehouseId) continue;
-      const hasAisle = w.layout !== 'single';
       const sides = warehouseSides(w);
       for(const [key, tagPrefix] of sides){
         for(const row of w[key]){
           for(const s of row.spots){
-            if(s.removed || s.isDoor) continue;
+            // only the bay itself is skipped — the other spot can be in the
+            // same warehouse (e.g. Buiten R4 in summer, Buiten L13 in winter)
+            if(s.removed || s.isDoor || s.id === spot.id) continue;
             for(const o of (s.occupants || [])){
               if(objNums.includes((o.objectNummer || '').trim().toLowerCase())){
                 return { warehouse: w, spot: s, tag: displayTag(s, tagPrefix) };
@@ -4124,7 +4123,7 @@
       const longStay = spot.occupants.some(o => isLongStay(o.since));
       const anyAway = spot.occupants.some(o => o.away);
       const notesTexts = spot.occupants.map(o => (o.notes || '').trim()).filter(Boolean);
-      const elsewhere = findOccupantElsewhere(spot, state.activeWarehouseId);
+      const elsewhere = findOccupantElsewhere(spot);
       el.className = 'spot' + (longStay ? ' long-stay' : '') + (anyAway ? ' is-away' : '');
       el.style.background = hexAlpha(t.color, 0.16);
       el.style.borderColor = t.color;
