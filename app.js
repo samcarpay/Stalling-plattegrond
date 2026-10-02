@@ -527,10 +527,21 @@
     render();
   }
 
+  function openPlanningTab(){
+    showPlanning = true;
+    showAgenda = false;
+    showOverview = false;
+    showNieuweKlanten = false;
+    showWinterstalling = false;
+    showKlanten = false;
+    render();
+  }
+
   if('serviceWorker' in navigator){
     // the service worker asks for this when a notification is tapped while the app is open
     navigator.serviceWorker.addEventListener('message', (e) => {
       if(e.data === 'open-agenda' && state) openAgendaTab();
+      if(e.data === 'open-planning' && state) openPlanningTab();
     });
   }
 
@@ -641,9 +652,10 @@
       state = defaultState();
     }
     bindTypes();
-    if(location.hash === '#agenda'){
+    if(location.hash === '#agenda' || location.hash === '#planning'){
+      const openPlanning = location.hash === '#planning';
       history.replaceState(null, '', location.pathname + location.search);
-      openAgendaTab();
+      if(openPlanning) openPlanningTab(); else openAgendaTab();
     } else {
       render();
     }

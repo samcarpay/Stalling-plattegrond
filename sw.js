@@ -1,6 +1,6 @@
 // Bump this string whenever you edit index.html, app.js or styles.css and re-deploy, so browsers
 // pick up the new version instead of serving a stale cached copy.
-const CACHE_NAME = 'storage-sites-v92';
+const CACHE_NAME = 'storage-sites-v93';
 
 const APP_SHELL = [
   './',
@@ -68,7 +68,7 @@ self.addEventListener('push', (event) => {
       body: data.body || '',
       icon: './icon-192.png',
       tag: data.tag,
-      data: { url: './#agenda' },
+      data: { open: data.open === 'planning' ? 'planning' : 'agenda' },
     }),
   ];
   if(typeof data.badge === 'number' && self.navigator.setAppBadge){
@@ -77,17 +77,19 @@ self.addEventListener('push', (event) => {
   event.waitUntil(Promise.all(tasks));
 });
 
-// Tapping the notification opens the app on the Agenda tab.
+// Tapping the notification opens the app on the Agenda tab (or Planning,
+// for the morning planning reminder).
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      const open = event.notification.data?.open || 'agenda';
       const win = wins[0];
       if(win){
-        win.postMessage('open-agenda');
+        win.postMessage('open-' + open);
         return win.focus();
       }
-      return self.clients.openWindow(event.notification.data?.url || './');
+      return self.clients.openWindow('./#' + open);
     })
   );
 });
