@@ -1,6 +1,6 @@
 // Bump this string whenever you edit index.html, app.js or styles.css and re-deploy, so browsers
 // pick up the new version instead of serving a stale cached copy.
-const CACHE_NAME = 'storage-sites-v94';
+const CACHE_NAME = 'storage-sites-v95';
 
 const APP_SHELL = [
   './',

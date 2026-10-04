@@ -4759,6 +4759,178 @@
     return n;
   }
 
+  // ---------- e-mail customers: pick tabs / customers, open own mail app with BCC ----------
+  // Opens a new e-mail in the user's own mail program (Outlook, Apple Mail…)
+  // with the chosen customers in BCC, so they don't see each other's
+  // address. Nothing is sent by the app itself.
+  const OWN_EMAIL = 'zwartendijkstalling@outlook.com';
+  const MAILTO_MAX_LENGTH = 1800; // longer mailto links get cut off by some mail apps
+
+  function isValidEmail(v){
+    return /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]{2,}$/.test(String(v || '').trim());
+  }
+
+  function openEmailCustomersModal(){
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('modalBody');
+    body.className = 'modal wide email-modal';
+
+    // every occupant, grouped by warehouse
+    const groups = state.warehouses.map(w => {
+      const people = [];
+      warehouseSides(w).forEach(([key, tagPrefix]) => {
+        w[key].forEach(row => row.spots.forEach(spot => {
+          if(spot.removed || spot.isDoor) return;
+          (spot.occupants || []).forEach(o => {
+            const email = String(o.email || '').trim();
+            people.push({
+              name: o.name || '(geen naam)',
+              objectNummer: o.objectNummer || '',
+              tag: displayTag(spot, tagPrefix),
+              email,
+              key: isValidEmail(email) ? email.toLowerCase() : null,
+            });
+          });
+        }));
+      });
+      return { w, people };
+    }).filter(g => g.people.length);
+
+    const selected = new Set();   // lowercased e-mail addresses
+    const openGroups = new Set(); // warehouse ids whose list is expanded
+    let query = '';
+    let subject = '';
+
+    function selectedList(){
+      const seen = new Map();
+      groups.forEach(g => g.people.forEach(p => {
+        if(p.key && selected.has(p.key) && !seen.has(p.key)) seen.set(p.key, p.email);
+      }));
+      return [...seen.values()];
+    }
+
+    // split into several e-mails when the address list gets too long for one link
+    function mailtoBatches(list){
+      const make = (addrs) => `mailto:${OWN_EMAIL}?bcc=${encodeURIComponent(addrs.join(','))}` + (subject ? `&subject=${encodeURIComponent(subject)}` : '');
+      const batches = [];
+      let current = [];
+      list.forEach(addr => {
+        if(current.length && make([...current, addr]).length > MAILTO_MAX_LENGTH){
+          batches.push(current); current = [];
+        }
+        current.push(addr);
+      });
+      if(current.length) batches.push(current);
+      return batches.map(make);
+    }
+
+    function matches(p){
+      if(!query) return true;
+      return [p.name, p.objectNummer, p.email, p.tag].join(' ').toLowerCase().includes(query);
+    }
+
+    function render(){
+      const list = selectedList();
+      const batches = mailtoBatches(list);
+      const groupsHtml = groups.map(g => {
+        const visible = g.people.filter(matches);
+        if(query && !visible.length) return '';
+        const withEmail = g.people.filter(p => p.key);
+        const allOn = withEmail.length > 0 && withEmail.every(p => selected.has(p.key));
+        const someOn = withEmail.some(p => selected.has(p.key));
+        const isOpen = openGroups.has(g.w.id) || !!query;
+        const rows = visible.map(p => `
+          <label class="em-person ${p.key ? '' : 'no-email'}">
+            <input type="checkbox" ${p.key ? '' : 'disabled'} ${p.key && selected.has(p.key) ? 'checked' : ''} data-person="${p.key ? escapeAttr(p.key) : ''}" />
+            <span class="em-name">${escapeHtml(p.name)}<span class="em-meta">${escapeHtml(p.tag)}${p.objectNummer ? ' · ' + escapeHtml(p.objectNummer) : ''}</span></span>
+            <span class="em-addr">${p.key ? escapeHtml(p.email) : 'geen e-mail'}</span>
+          </label>`).join('');
+        return `
+          <div class="em-group">
+            <div class="em-group-head">
+              <label class="em-group-check">
+                <input type="checkbox" data-group="${escapeAttr(g.w.id)}" ${allOn ? 'checked' : ''} ${withEmail.length ? '' : 'disabled'} />
+                <strong>${escapeHtml(g.w.name)}</strong>
+                <span class="em-meta">${withEmail.length} van ${g.people.length} met e-mail</span>
+              </label>
+              <button type="button" class="btn ghost small em-toggle" data-toggle="${escapeAttr(g.w.id)}">${isOpen ? 'Verbergen' : 'Klanten tonen'}</button>
+            </div>
+            ${isOpen ? `<div class="em-people">${rows}</div>` : ''}
+          </div>`;
+      }).join('');
+
+      body.innerHTML = `
+        <h3>E-mail aan klanten</h3>
+        <div class="sub">Kies een loods, of losse klanten. De app opent een nieuwe e-mail in je eigen mailprogramma met alle gekozen klanten in <strong>BCC</strong> — zo zien ze elkaars adres niet. Je schrijft en verstuurt het bericht zelf.</div>
+        <div class="field">
+          <input type="text" id="emSearch" placeholder="Zoek op naam, object nummer of e-mail…" value="${escapeAttr(query)}" />
+        </div>
+        <div class="em-groups">${groupsHtml || '<div class="sub">Geen klanten gevonden.</div>'}</div>
+        <div class="field" style="margin-top:12px;">
+          <label for="emSubject">Onderwerp (optioneel)</label>
+          <input type="text" id="emSubject" placeholder="bijv. Werkzaamheden in KAS 2" value="${escapeAttr(subject)}" />
+        </div>
+        <div class="em-summary"><strong>${list.length}</strong> ${list.length === 1 ? 'adres' : 'adressen'} gekozen${batches.length > 1 ? ` — te veel voor één e-mail, daarom verdeeld over ${batches.length} e-mails` : ''}</div>
+        <div class="modal-actions em-actions">
+          <button class="btn ghost" id="emCloseBtn">Sluiten</button>
+          <button class="btn ghost" id="emCopyBtn" ${list.length ? '' : 'disabled'}>Adressen kopiëren</button>
+          ${batches.length <= 1
+            ? `<a class="btn ${list.length ? '' : 'disabled-link'}" id="emOpenBtn" href="${list.length ? escapeAttr(batches[0]) : '#'}">Open e-mail</a>`
+            : batches.map((href, i) => `<a class="btn" href="${escapeAttr(href)}">Open e-mail ${i + 1} van ${batches.length}</a>`).join('')}
+        </div>
+        <div class="sub" id="emCopyNote" style="display:none;margin-top:8px;"></div>
+      `;
+
+      const search = body.querySelector('#emSearch');
+      search.addEventListener('input', () => {
+        const pos = search.selectionStart;
+        query = search.value.trim().toLowerCase();
+        render();
+        const again = body.querySelector('#emSearch');
+        again.focus(); again.setSelectionRange(pos, pos);
+      });
+      body.querySelector('#emSubject').addEventListener('change', (e) => { subject = e.target.value.trim(); render(); });
+      body.querySelectorAll('[data-group]').forEach(cb => cb.addEventListener('change', () => {
+        const g = groups.find(x => x.w.id === cb.getAttribute('data-group'));
+        g.people.forEach(p => { if(p.key){ if(cb.checked) selected.add(p.key); else selected.delete(p.key); } });
+        render();
+      }));
+      body.querySelectorAll('[data-person]').forEach(cb => cb.addEventListener('change', () => {
+        const key = cb.getAttribute('data-person');
+        if(cb.checked) selected.add(key); else selected.delete(key);
+        render();
+      }));
+      body.querySelectorAll('[data-toggle]').forEach(btn => btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-toggle');
+        if(openGroups.has(id)) openGroups.delete(id); else openGroups.add(id);
+        render();
+      }));
+      body.querySelectorAll('[data-group]').forEach(cb => {
+        const g = groups.find(x => x.w.id === cb.getAttribute('data-group'));
+        const withEmail = g.people.filter(p => p.key);
+        cb.indeterminate = withEmail.some(p => selected.has(p.key)) && !withEmail.every(p => selected.has(p.key));
+      });
+      body.querySelector('#emCloseBtn').addEventListener('click', () => { body.className = 'modal'; closeModal(); });
+      body.querySelector('#emCopyBtn').addEventListener('click', async () => {
+        const note = body.querySelector('#emCopyNote');
+        const text = selectedList().join(', ');
+        try{
+          await navigator.clipboard.writeText(text);
+          note.textContent = 'Gekopieerd — plak de adressen in het BCC-veld van je e-mail.';
+        }catch(e){
+          note.textContent = text; // clipboard not allowed: show them so they can be copied by hand
+        }
+        note.style.display = 'block';
+      });
+      const openBtn = body.querySelector('#emOpenBtn');
+      if(openBtn && !list.length) openBtn.addEventListener('click', (e) => e.preventDefault());
+    }
+
+    render();
+    overlay.classList.add('show');
+    overlay.addEventListener('click', (e) => { if(e.target === overlay){ body.className = 'modal'; closeModal(); } }, { once:true });
+  }
+
   function openPrijslijstModal(){
     const overlay = document.getElementById('overlay');
     const body = document.getElementById('modalBody');
@@ -4966,6 +5138,7 @@
   document.getElementById('manageTypesBtn').addEventListener('click', openManageTypesModal);
   document.getElementById('backupsBtn').addEventListener('click', openBackupsModal);
   document.getElementById('prijslijstBtn').addEventListener('click', openPrijslijstModal);
+  document.getElementById('emailCustomersBtn').addEventListener('click', openEmailCustomersModal);
   if(typeof BLOCKED_DATES_PATH !== 'undefined' && BLOCKED_DATES_PATH){
     document.getElementById('blockedDatesBtn').style.display = '';
     document.getElementById('blockedDatesBtn').addEventListener('click', openBlockedDatesModal);

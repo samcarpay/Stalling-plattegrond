@@ -129,7 +129,7 @@ window.smokeTest = (() => {
     }
 
     // toolbar dialogs (print/export/import skipped: they open system dialogs)
-    for(const id of ['backupsBtn', 'prijslijstBtn', 'blockedDatesBtn', 'manageTypesBtn']){
+    for(const id of ['backupsBtn', 'prijslijstBtn', 'emailCustomersBtn', 'blockedDatesBtn', 'manageTypesBtn']){
       const btn = document.getElementById(id);
       if(!btn || btn.style.display === 'none') continue;
       await step('toolbar: ' + btn.textContent.trim(), async () => { btn.click(); await wait(700); });
