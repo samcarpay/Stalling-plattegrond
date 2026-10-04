@@ -1352,12 +1352,19 @@
   // precise), then by name, and only assumes "the only occupant" when
   // there's genuinely just one. Returns null if it can't tell for sure,
   // rather than guessing and risking the wrong person getting toggled.
+  // Object numbers as customers type them: ignore capitals, spaces,
+  // hyphens and dots, and leading zeros in the number — so "VW 0100",
+  // "vw-0100", "vw00100" and "VW0100" all match (VW0101 still doesn't)
+  function normObjNum(v){
+    return String(v || '').toLowerCase().replace(/[\s.\-_]/g, '').replace(/(^|\D)0+(?=\d)/g, '$1');
+  }
+
   function findMatchingOccupant(spot, appt){
     if(!spot || !spot.occupants || spot.occupants.length === 0) return null;
     if(spot.occupants.length === 1) return spot.occupants[0];
-    const apptObjNum = (appt.vehicleDesc || '').trim().toLowerCase();
+    const apptObjNum = normObjNum(appt.vehicleDesc);
     if(apptObjNum){
-      const byObjNum = spot.occupants.find(o => (o.objectNummer || '').trim().toLowerCase() === apptObjNum);
+      const byObjNum = spot.occupants.find(o => normObjNum(o.objectNummer) === apptObjNum);
       if(byObjNum) return byObjNum;
     }
     const apptName = (appt.name || '').trim().toLowerCase();
@@ -1381,11 +1388,11 @@
     return null;
   }
 
-  // Looks for a bay whose object nummer exactly matches what the customer
-  // typed in the booking form — lets a request be linked in one click
+  // Looks for a bay whose object nummer matches what the customer typed in
+  // the booking form (ignoring capitals, spaces, hyphens and dots) — lets a request be linked in one click
   // instead of a manual search, without ever linking silently on its own.
   function findObjectNummerMatch(appt){
-    const q = (appt.vehicleDesc || '').trim().toLowerCase();
+    const q = normObjNum(appt.vehicleDesc);
     if(!q) return null;
     for(const w of state.warehouses){
       const hasAisle = w.layout !== 'single';
@@ -1394,7 +1401,7 @@
           for(const spot of row.spots){
             if(spot.removed || spot.isDoor) continue;
             for(const o of (spot.occupants || [])){
-              if((o.objectNummer || '').trim().toLowerCase() === q){
+              if(normObjNum(o.objectNummer) === q){
                 return { warehouse: w, spot, side };
               }
             }

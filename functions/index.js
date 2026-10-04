@@ -273,12 +273,18 @@ function findLinkedSpot(plattegrond, linked){
   return null;
 }
 
+// same rules as normObjNum in app.js: ignore capitals, spaces, hyphens,
+// dots and leading zeros in the number
+function normObjNum(v){
+  return String(v || '').toLowerCase().replace(/[\s.\-_]/g, '').replace(/(^|\D)0+(?=\d)/g, '$1');
+}
+
 function findMatchingOccupant(spot, appt){
   if(!spot || !spot.occupants || spot.occupants.length === 0) return null;
   if(spot.occupants.length === 1) return spot.occupants[0];
-  const apptObjNum = (appt.vehicleDesc || '').trim().toLowerCase();
+  const apptObjNum = normObjNum(appt.vehicleDesc);
   if(apptObjNum){
-    const byObjNum = spot.occupants.find(o => (o.objectNummer || '').trim().toLowerCase() === apptObjNum);
+    const byObjNum = spot.occupants.find(o => normObjNum(o.objectNummer) === apptObjNum);
     if(byObjNum) return byObjNum;
   }
   const apptName = (appt.name || '').trim().toLowerCase();
