@@ -15,6 +15,7 @@
 
 const { onValueCreated } = require('firebase-functions/v2/database');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const logger = require('firebase-functions/logger');
 const admin = require('firebase-admin');
@@ -350,5 +351,91 @@ exports.morningAwayReminder = onSchedule(
       tag: `morning-away-${today}`,
     });
     logger.info('Morning reminder sent', notAway.length);
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────
+// OBJECT NUMBER CHECK FOR THE PICKUP FORM ON THE WEBSITE
+//
+// The pickup form (zwartendijkstalling.nl/ophalen/) asks this whether an
+// object number exists, so it can warn the customer about a typo. It
+// only ever answers {known: true|false} — never names or other details —
+// and the form is sent either way.
+//
+// Kept cheap and hard to abuse:
+//   - the list of object numbers is cached for 5 minutes per instance,
+//     so a check doesn't read all the data every time
+//   - at most 30 checks per 10 minutes per visitor (IP address)
+//   - at most 2 instances at once
+// ─────────────────────────────────────────────────────────────────
+
+const CHECK_ORIGINS = [
+  /^https:\/\/(www\.)?zwartendijkstalling\.nl$/,
+  /^http:\/\/(127\.0\.0\.1|localhost|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+):1111$/, // local preview
+];
+const CACHE_MS = 5 * 60 * 1000;
+const RATE_WINDOW_MS = 10 * 60 * 1000;
+const RATE_MAX = 30;
+let objectNumberCache = { at: 0, set: null };
+const recentChecks = new Map(); // ip -> { start, count }
+
+async function knownObjectNumbers(){
+  if(objectNumberCache.set && Date.now() - objectNumberCache.at < CACHE_MS) return objectNumberCache.set;
+  const raw = (await admin.database().ref(`${SYNC_PATH}/data`).once('value')).val();
+  const set = new Set();
+  const plattegrond = JSON.parse(raw || '{}');
+  for(const w of (plattegrond.warehouses || [])){
+    for(const side of ['left', 'right']){
+      for(const row of (w[side] || [])){
+        for(const spot of (row.spots || [])){
+          for(const o of (spot.occupants || [])){
+            if(o.objectNummer) set.add(normObjNum(o.objectNummer));
+          }
+          if(spot.winterKlant && spot.winterKlant.objectNummer) set.add(normObjNum(spot.winterKlant.objectNummer));
+        }
+      }
+    }
+  }
+  objectNumberCache = { at: Date.now(), set };
+  return set;
+}
+
+exports.checkObjectNummer = onRequest(
+  { region: 'europe-west1', maxInstances: 2, memory: '256MiB', timeoutSeconds: 10 },
+  async (req, res) => {
+    const origin = req.get('origin') || '';
+    if(CHECK_ORIGINS.some(re => re.test(origin))){
+      res.set('Access-Control-Allow-Origin', origin);
+      res.set('Vary', 'Origin');
+    }
+    if(req.method === 'OPTIONS'){
+      res.set('Access-Control-Allow-Methods', 'GET');
+      res.set('Access-Control-Max-Age', '3600');
+      res.status(204).send('');
+      return;
+    }
+    if(req.method !== 'GET'){ res.status(405).json({ error: 'method' }); return; }
+
+    const ip = (req.get('x-forwarded-for') || req.ip || '').split(',')[0].trim();
+    const now = Date.now();
+    const entry = recentChecks.get(ip);
+    if(!entry || now - entry.start > RATE_WINDOW_MS){
+      recentChecks.set(ip, { start: now, count: 1 });
+    } else if(++entry.count > RATE_MAX){
+      res.status(429).json({ error: 'too many checks' });
+      return;
+    }
+    if(recentChecks.size > 5000) recentChecks.clear(); // keep memory bounded
+
+    const n = normObjNum(String(req.query.n || '').slice(0, 40));
+    if(!n){ res.status(400).json({ error: 'missing number' }); return; }
+    try{
+      const known = (await knownObjectNumbers()).has(n);
+      res.set('Cache-Control', 'no-store');
+      res.json({ known });
+    }catch(err){
+      logger.error('Object number check failed', err.message);
+      res.status(500).json({ error: 'check failed' });
+    }
   }
 );
