@@ -4830,6 +4830,10 @@
     }
 
     function render(){
+      // keep the list (and the dialog itself, on phones) where it was scrolled to
+      const prevGroups = body.querySelector('.em-groups');
+      const prevListScroll = prevGroups ? prevGroups.scrollTop : 0;
+      const prevBodyScroll = body.scrollTop;
       const list = selectedList();
       const batches = mailtoBatches(list);
       const groupsHtml = groups.map(g => {
@@ -4880,6 +4884,10 @@
         </div>
         <div class="sub" id="emCopyNote" style="display:none;margin-top:8px;"></div>
       `;
+
+      const groupsEl = body.querySelector('.em-groups');
+      if(groupsEl) groupsEl.scrollTop = prevListScroll;
+      body.scrollTop = prevBodyScroll;
 
       const search = body.querySelector('#emSearch');
       search.addEventListener('input', () => {
