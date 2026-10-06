@@ -88,6 +88,9 @@
     // een misklik nooit een klant spoorloos laat verdwijnen — zie
     // recordRemovedOccupants() en de "Recent verwijderd" sectie bij Klanten.
     if(!Array.isArray(loaded.removedCustomers)) loaded.removedCustomers = [];
+    // Klanten die tijdelijk van hun plek zijn gehaald om te kunnen schuiven
+    // (bijv. bij een volle loods) — zie parkOccupant() en "Geparkeerd" bij Klanten.
+    if(!Array.isArray(loaded.parked)) loaded.parked = [];
     Object.values(loaded.vehicleTypes).forEach(t => {
       if(typeof t.price !== 'number') t.price = 0;
       if(typeof t.period !== 'string') t.period = 'jaar';
@@ -1251,10 +1254,14 @@
     body.className = 'modal wide';
     body.innerHTML = `
       <h3>Verplaats ${escapeHtml(occupant.name || 'dit voertuig')}</h3>
-      <div class="sub">Zoek de plek waar alleen dit voertuig naartoe moet — ook plekken van klanten die zelf momenteel weg zijn worden getoond. De rest van de huidige plek blijft ongewijzigd.</div>
+      <div class="sub">Kies een vrije plek, of <strong>wissel</strong> met een klant op een bezette plek: typ dan een naam, object nummer of plek. De rest van de huidige plek blijft ongewijzigd.</div>
       <div class="field">
-        <label>Zoek plekken (pleknaam, loods)</label>
+        <label>Zoek een plek of klant (pleknaam, loods, naam, object nummer)</label>
         <input type="text" id="moveOccSearchInput" placeholder="Begin met typen…" />
+      </div>
+      <div class="move-park-row">
+        <button class="btn ghost small" id="moveOccParkBtn">🅿️ Tijdelijk parkeren</button>
+        <span class="sub" style="margin:0;">Haalt deze klant van de plek zodat die vrijkomt. Je vindt de klant terug bij Klanten onder "Geparkeerd".</span>
       </div>
       <div id="moveOccResults" style="max-height:320px;overflow-y:auto;"></div>
       <div class="modal-actions"><button class="btn ghost" id="moveOccCancelBtn">Annuleren</button></div>
@@ -1264,17 +1271,25 @@
     input.focus();
 
     function runSearch(){
-      const results = searchAvailableBaysForReturn(input.value);
+      const results = searchAvailableBaysForReturn(input.value).filter(r => r.spot !== sourceSpot);
+      const swaps = searchOccupantsForSwap(input.value, sourceSpot);
       const resEl = document.getElementById('moveOccResults');
-      if(results.length === 0){
-        resEl.innerHTML = `<div class="search-empty">Geen beschikbare plekken gevonden.</div>`;
+      if(results.length === 0 && swaps.length === 0){
+        resEl.innerHTML = `<div class="search-empty">${input.value.trim() ? 'Niets gevonden.' : 'Geen vrije plekken. Typ een naam, object nummer of plek om met een klant te wisselen, of parkeer deze klant tijdelijk.'}</div>`;
         return;
       }
       resEl.innerHTML = results.map((r, i) => `
         <div class="search-result" data-move-occ-result="${i}">
           <div class="search-result-main">
-            <div class="search-result-name">Plek ${escapeHtml(r.tag)}</div>
+            <div class="search-result-name">Plek ${escapeHtml(r.tag)} <span class="move-kind free">vrij</span></div>
             <div class="search-result-meta">${escapeHtml(r.warehouse.name)}${r.awayNames ? ` · momenteel weg: ${escapeHtml(r.awayNames)}` : ''}</div>
+          </div>
+        </div>
+      `).join('') + swaps.map((r, i) => `
+        <div class="search-result" data-swap-occ-result="${i}">
+          <div class="search-result-main">
+            <div class="search-result-name">Wisselen met ${escapeHtml(r.occupant.name || 'Naam onbekend')} <span class="move-kind swap">wissel</span></div>
+            <div class="search-result-meta">${escapeHtml(r.warehouse.name)} · plek ${escapeHtml(r.tag)}${r.occupant.objectNummer ? ' · ' + escapeHtml(r.occupant.objectNummer) : ''}${r.spot.occupants.length > 1 ? ` · gedeelde plek (${r.spot.occupants.length})` : ''}</div>
           </div>
         </div>
       `).join('');
@@ -1283,13 +1298,38 @@
           const r = results[parseInt(node.getAttribute('data-move-occ-result'), 10)];
           const idx = sourceSpot.occupants.indexOf(occupant);
           if(idx === -1){ closeModal(); return; }
+          const from = spotLocation(sourceSpot.id);
           sourceSpot.occupants.splice(idx, 1);
           r.spot.occupants = (r.spot.occupants || []).concat([occupant]);
+          relinkAppointmentsAfterMove(occupant, from ? from.spot.id : null, spotLocation(r.spot.id));
           closeModal();
           render(); save();
         });
       });
+      resEl.querySelectorAll('[data-swap-occ-result]').forEach(node => {
+        node.addEventListener('click', () => {
+          const r = swaps[parseInt(node.getAttribute('data-swap-occ-result'), 10)];
+          const fromTag = (spotLocation(sourceSpot.id) || {}).tag || '';
+          if(!swapOccupants(sourceSpot, occupant, r.spot, r.occupant)){ closeModal(); return; }
+          closeModal();
+          render(); save();
+          // the undo looks everything up again by id: after a save the app may
+          // have refreshed its data from the cloud, making these objects stale
+          const idA = sourceSpot.id, idB = r.spot.id, keyA = occupantKey(occupant), keyB = occupantKey(r.occupant);
+          showUndoToast(`${occupant.name || 'Klant'} ↔ ${r.occupant.name || 'klant'} gewisseld (${fromTag} ↔ ${r.tag})`, () => {
+            const a = spotLocation(idA), b = spotLocation(idB);
+            const occInA = a && (a.spot.occupants || []).find(o => occupantKey(o) === keyB);
+            const occInB = b && (b.spot.occupants || []).find(o => occupantKey(o) === keyA);
+            if(occInA && occInB && swapOccupants(a.spot, occInA, b.spot, occInB)){ render(); save(); }
+            else alert('Terugwisselen lukte niet automatisch: een van de plekken is inmiddels gewijzigd.');
+          });
+        });
+      });
     }
+    document.getElementById('moveOccParkBtn').addEventListener('click', () => {
+      closeModal();
+      parkOccupant(sourceSpot, occupant);
+    });
     input.addEventListener('input', runSearch);
     runSearch();
 
@@ -2732,6 +2772,53 @@
       container.appendChild(waitSection);
     }
 
+    // ---- geparkeerd: klanten die tijdelijk van hun plek zijn gehaald om te kunnen schuiven ----
+    const parkedList = (Array.isArray(state.parked) ? state.parked : []).slice().sort((a, b) => a.parkedAt - b.parkedAt);
+    if(parkedList.length > 0){
+      const parkedSection = document.createElement('div');
+      parkedSection.className = 'overview-section';
+      parkedSection.style.maxWidth = '760px';
+      parkedSection.innerHTML = `<h3 class="overview-h">🅿️ Geparkeerd (${parkedList.length})</h3>
+        <div class="sub" style="margin:-4px 0 10px;">Deze klanten staan nu op geen enkele plek. Zet ze terug of geef ze een nieuwe plek.</div>`;
+      parkedList.forEach(entry => {
+        const o = entry.occupant || {};
+        const when = new Date(entry.parkedAt);
+        const whenText = `${when.getDate()} ${DUTCH_MONTH_NAMES[when.getMonth()].slice(0,3)} ${String(when.getHours()).padStart(2,'0')}:${String(when.getMinutes()).padStart(2,'0')}`;
+        const loc = entry.spotId ? spotLocation(entry.spotId) : null;
+        const originalFree = !!loc && !loc.spot.removed && !loc.spot.isDoor && !(loc.spot.occupants || []).length;
+        const card = document.createElement('div');
+        card.className = 'agenda-card needs-action';
+        card.innerHTML = `
+          <div class="agenda-card-top">
+            <div>
+              <div class="agenda-date">${o.objectNummer ? 'Object ' + escapeHtml(o.objectNummer) : 'Geen object nummer'}</div>
+              <div class="agenda-name">${escapeHtml(o.name || 'Naam onbekend')}${o.reg ? ' · ' + escapeHtml(o.reg) : ''}</div>
+              ${(o.phone || o.email) ? `<div class="agenda-sub">${[o.phone, o.email].filter(Boolean).map(escapeHtml).join(' · ')}</div>` : ''}
+              <div class="agenda-sub">Stond op ${escapeHtml(entry.warehouseName || 'onbekende loods')}${entry.tag ? ', plek ' + escapeHtml(entry.tag) : ''} · geparkeerd op ${whenText}</div>
+            </div>
+            <div class="agenda-actions"></div>
+          </div>
+        `;
+        const actionsEl = card.querySelector('.agenda-actions');
+        const placeBtn = document.createElement('button');
+        placeBtn.className = 'btn small';
+        placeBtn.textContent = 'Plaats in loods';
+        placeBtn.addEventListener('click', () => openPlaceWaitlistSearchModal({ ...o, id: entry.id, _fromParked: true }));
+        actionsEl.appendChild(placeBtn);
+        if(originalFree){
+          const backBtn = document.createElement('button');
+          backBtn.className = 'btn ghost small';
+          backBtn.textContent = `Terugzetten op ${loc.tag}`;
+          backBtn.addEventListener('click', () => {
+            if(!restoreEntryToOriginalSpot(entry, 'parked')) alert('Terugzetten lukte niet: de plek is niet meer vrij. Kies "Plaats in loods".');
+          });
+          actionsEl.appendChild(backBtn);
+        }
+        parkedSection.appendChild(card);
+      });
+      container.appendChild(parkedSection);
+    }
+
     // ---- recent verwijderd: klanten die van een plek zijn gehaald (30 dagen terug te zetten) ----
     pruneRemovedCustomers();
     const removedList = state.removedCustomers.slice().sort((a, b) => b.removedAt - a.removedAt);
@@ -3008,6 +3095,7 @@
   // instead of a signed contract from the separate contract system.
   let pendingPlacementWaitlistId = null;
   let pendingPlacementRemovedId = null; // same idea, for an entry from "Recent verwijderd"
+  let pendingPlacementParkedId = null;  // ... and for one from "Geparkeerd"
 
   // ---------- safety net: customers taken off a bay ----------
   // A customer only exists as the occupant of a bay, so emptying a bay used
@@ -3105,16 +3193,109 @@
     });
   }
 
-  // Puts a removed customer straight back on the bay they came from (only
-  // offered while that bay is still there and empty).
-  function restoreRemovedToOriginalSpot(entry){
+  // Puts a removed or parked customer straight back on the bay they came
+  // from (only offered while that bay is still there and empty).
+  function restoreEntryToOriginalSpot(entry, listName){
     const loc = entry.spotId ? spotLocation(entry.spotId) : null;
     if(!loc || loc.spot.removed || loc.spot.isDoor || (loc.spot.occupants || []).length) return false;
     loc.spot.occupants = [{ ...entry.occupant }];
     if(entry.spotType && TYPES[entry.spotType]) loc.spot.type = entry.spotType;
-    forgetRemovedEntries([entry.id]);
+    state[listName] = (state[listName] || []).filter(e => e.id !== entry.id);
     render(); save();
     return true;
+  }
+  function restoreRemovedToOriginalSpot(entry){ return restoreEntryToOriginalSpot(entry, 'removedCustomers'); }
+
+  // ---------- moving customers when everything is full: swap and park ----------
+
+  // Open pickup requests are linked to a bay, not a person — when a customer
+  // moves, the requests that are theirs (same object nummer or name) follow.
+  function relinkAppointmentsAfterMove(occupant, fromSpotId, toLoc){
+    if(!appointmentsRef || !fromSpotId || !toLoc) return;
+    const objNum = normObjNum(occupant.objectNummer);
+    const name = (occupant.name || '').trim().toLowerCase();
+    appointments.forEach(a => {
+      if(a.status === 'done' || !a.linked || a.linked.spotId !== fromSpotId) return;
+      const sameObj = objNum && normObjNum(a.vehicleDesc) === objNum;
+      const sameName = name && (a.name || '').trim().toLowerCase() === name;
+      if(sameObj || sameName){
+        appointmentsRef.child(a.id).update({ linked: { warehouseId: toLoc.warehouse.id, spotId: toLoc.spot.id } });
+      }
+    });
+  }
+
+  function occupantKey(o){
+    return [o.name || '', o.objectNummer || '', o.reg || ''].join('|').toLowerCase();
+  }
+
+  // Occupied bays to swap with — only listed once something is typed, so the
+  // list isn't every customer in the building.
+  function searchOccupantsForSwap(query, sourceSpot){
+    const q = query.trim().toLowerCase();
+    if(q.length < 2) return [];
+    const results = [];
+    state.warehouses.forEach(w => {
+      warehouseSides(w).forEach(([key, tagPrefix]) => {
+        w[key].forEach(row => {
+          row.spots.forEach(spot => {
+            if(spot === sourceSpot || spot.removed || spot.isDoor) return;
+            const tag = displayTag(spot, tagPrefix);
+            (spot.occupants || []).forEach(o => {
+              const hay = [spot.label || '', tag, w.name, o.name || '', o.objectNummer || '', o.reg || ''].join(' ').toLowerCase();
+              if(hay.includes(q)) results.push({ warehouse: w, spot, tag, occupant: o });
+            });
+          });
+        });
+      });
+    });
+    return results.slice(0, 40);
+  }
+
+  // Two customers trade bays in one step — works between warehouses, and
+  // needs no free bay.
+  function swapOccupants(spotA, occA, spotB, occB){
+    const ia = (spotA.occupants || []).indexOf(occA);
+    const ib = (spotB.occupants || []).indexOf(occB);
+    if(ia === -1 || ib === -1 || spotA === spotB) return false;
+    const locA = spotLocation(spotA.id), locB = spotLocation(spotB.id);
+    spotA.occupants[ia] = occB;
+    spotB.occupants[ib] = occA;
+    // a bay with just this one vehicle takes over its type (the colour)
+    if(spotA.occupants.length === 1 && spotB.occupants.length === 1){
+      const t = spotA.type; spotA.type = spotB.type; spotB.type = t;
+    }
+    relinkAppointmentsAfterMove(occA, spotA.id, locB);
+    relinkAppointmentsAfterMove(occB, spotB.id, locA);
+    return true;
+  }
+
+  // Takes a customer off their bay WITHOUT losing them: they wait under
+  // Klanten > "Geparkeerd" (no time limit) until placed again.
+  function parkOccupant(sourceSpot, occupant){
+    const idx = (sourceSpot.occupants || []).indexOf(occupant);
+    if(idx === -1) return;
+    const loc = spotLocation(sourceSpot.id);
+    const entry = {
+      id: uid(),
+      parkedAt: Date.now(),
+      occupant: { name:occupant.name||'', reg:occupant.reg||'', since:occupant.since||'', notes:occupant.notes||'', away:!!occupant.away, komtDitJaar:!!occupant.komtDitJaar, objectNummer:occupant.objectNummer||'', email:occupant.email||'', phone:occupant.phone||'' },
+      spotId: sourceSpot.id,
+      spotType: sourceSpot.type,
+      warehouseId: loc ? loc.warehouse.id : null,
+      warehouseName: loc ? loc.warehouse.name : '',
+      tag: loc ? loc.tag : '',
+    };
+    if(!Array.isArray(state.parked)) state.parked = [];
+    sourceSpot.occupants.splice(idx, 1);
+    state.parked.push(entry);
+    render(); save();
+    showUndoToast(`${occupant.name || 'Klant'} geparkeerd — plek ${entry.tag} is vrij`, () => {
+      const now = spotLocation(sourceSpot.id);
+      if(!now){ alert('Deze plek bestaat niet meer. De klant staat bij Klanten onder "Geparkeerd".'); return; }
+      now.spot.occupants = (now.spot.occupants || []).concat([{ ...entry.occupant }]);
+      state.parked = state.parked.filter(e => e.id !== entry.id);
+      render(); save();
+    });
   }
 
   function openPlaceWaitlistSearchModal(entry){
@@ -3175,6 +3356,7 @@
 
     // the same search-and-place flow puts back a customer from "Recent verwijderd"
     if(entry._fromRemoved) pendingPlacementRemovedId = entry.id;
+    else if(entry._fromParked) pendingPlacementParkedId = entry.id;
     else pendingPlacementWaitlistId = entry.id;
     openSpotModal(null, result.spot, null, null, null, result.tagPrefix, {
       name: entry.name || '',
@@ -3183,7 +3365,7 @@
       phone: entry.phone || '',
       objectNummer: entry.objectNummer || '',
       notes: entry.notes || '',
-      ...(entry._fromRemoved ? { since: entry.since || '', away: !!entry.away, komtDitJaar: !!entry.komtDitJaar, _wasAway: !!entry.away } : {}),
+      ...((entry._fromRemoved || entry._fromParked) ? { since: entry.since || '', away: !!entry.away, komtDitJaar: !!entry.komtDitJaar, _wasAway: !!entry.away } : {}),
     });
   }
 
@@ -3779,7 +3961,8 @@
 
     const klantenTab = document.createElement('div');
     klantenTab.className = 'wh-tab' + (showKlanten ? ' active' : '');
-    klantenTab.innerHTML = `<span class="wh-tab-name-text">👥 Klanten</span>`;
+    const parkedCount = Array.isArray(state.parked) ? state.parked.length : 0;
+    klantenTab.innerHTML = `<span class="wh-tab-name-text">👥 Klanten</span>` + (parkedCount ? `<span class="wh-count parked">${parkedCount} geparkeerd</span>` : '');
     klantenTab.addEventListener('click', () => {
       showKlanten = true;
       showOverview = false;
@@ -4885,6 +5068,12 @@
       const placedWaitlistId = pendingPlacementWaitlistId;
       const placedRemovedId = pendingPlacementRemovedId;
       if(placedRemovedId) forgetRemovedEntries([placedRemovedId]);
+      const placedParkedId = pendingPlacementParkedId;
+      if(placedParkedId && Array.isArray(state.parked)){
+        const parkedEntry = state.parked.find(e => e.id === placedParkedId);
+        if(parkedEntry) relinkAppointmentsAfterMove(parkedEntry.occupant, parkedEntry.spotId, spotLocation(spot.id));
+        state.parked = state.parked.filter(e => e.id !== placedParkedId);
+      }
       closeModal(); render(); save();
 
       if(placedId && contractDb){
@@ -4911,6 +5100,7 @@
     pendingPlacementAanvraagId = null;
     pendingPlacementWaitlistId = null;
     pendingPlacementRemovedId = null;
+    pendingPlacementParkedId = null;
   }
 
   // ---------- reusable confirm dialog for destructive actions ----------
