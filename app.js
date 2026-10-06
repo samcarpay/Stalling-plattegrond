@@ -84,6 +84,10 @@
     // Klanten die je alvast wilt vastleggen voordat er een plek voor ze is —
     // zie renderKlantenPage()'s "Nog te plaatsen" sectie.
     if(!Array.isArray(loaded.waitlist)) loaded.waitlist = [];
+    // Klanten die van een plek zijn gehaald blijven hier 30 dagen staan, zodat
+    // een misklik nooit een klant spoorloos laat verdwijnen — zie
+    // recordRemovedOccupants() en de "Recent verwijderd" sectie bij Klanten.
+    if(!Array.isArray(loaded.removedCustomers)) loaded.removedCustomers = [];
     Object.values(loaded.vehicleTypes).forEach(t => {
       if(typeof t.price !== 'number') t.price = 0;
       if(typeof t.period !== 'string') t.period = 'jaar';
@@ -2728,6 +2732,68 @@
       container.appendChild(waitSection);
     }
 
+    // ---- recent verwijderd: klanten die van een plek zijn gehaald (30 dagen terug te zetten) ----
+    pruneRemovedCustomers();
+    const removedList = state.removedCustomers.slice().sort((a, b) => b.removedAt - a.removedAt);
+    if(removedList.length > 0){
+      const removedSection = document.createElement('div');
+      removedSection.className = 'overview-section';
+      removedSection.style.maxWidth = '760px';
+      removedSection.innerHTML = `<h3 class="overview-h">Recent verwijderd (${removedList.length})</h3>
+        <div class="sub" style="margin:-4px 0 10px;">Klanten die van een plek zijn gehaald. Ze blijven hier ${REMOVED_KEEP_DAYS} dagen staan, zodat je ze kunt terugzetten.</div>`;
+      removedList.forEach(entry => {
+        const o = entry.occupant || {};
+        const when = new Date(entry.removedAt);
+        const whenText = `${when.getDate()} ${DUTCH_MONTH_NAMES[when.getMonth()].slice(0,3)} ${String(when.getHours()).padStart(2,'0')}:${String(when.getMinutes()).padStart(2,'0')}`;
+        const loc = entry.spotId ? spotLocation(entry.spotId) : null;
+        const originalFree = !!loc && !loc.spot.removed && !loc.spot.isDoor && !(loc.spot.occupants || []).length;
+        const card = document.createElement('div');
+        card.className = 'agenda-card';
+        card.innerHTML = `
+          <div class="agenda-card-top">
+            <div>
+              <div class="agenda-date">${o.objectNummer ? 'Object ' + escapeHtml(o.objectNummer) : 'Geen object nummer'}</div>
+              <div class="agenda-name">${escapeHtml(o.name || 'Naam onbekend')}${o.reg ? ' · ' + escapeHtml(o.reg) : ''}</div>
+              ${(o.phone || o.email) ? `<div class="agenda-sub">${[o.phone, o.email].filter(Boolean).map(escapeHtml).join(' · ')}</div>` : ''}
+              <div class="agenda-sub">Stond op ${escapeHtml(entry.warehouseName || 'onbekende loods')}${entry.tag ? ', plek ' + escapeHtml(entry.tag) : ''} · verwijderd op ${whenText}</div>
+            </div>
+            <div class="agenda-actions"></div>
+          </div>
+        `;
+        const actionsEl = card.querySelector('.agenda-actions');
+
+        if(originalFree){
+          const backBtn = document.createElement('button');
+          backBtn.className = 'btn small';
+          backBtn.textContent = `Terugzetten op ${loc.tag}`;
+          backBtn.addEventListener('click', () => {
+            if(!restoreRemovedToOriginalSpot(entry)) alert('Terugzetten lukte niet: de plek is niet meer vrij. Kies "Andere plek".');
+          });
+          actionsEl.appendChild(backBtn);
+        }
+        const placeBtn = document.createElement('button');
+        placeBtn.className = originalFree ? 'btn ghost small' : 'btn small';
+        placeBtn.textContent = originalFree ? 'Andere plek' : 'Plaats in loods';
+        placeBtn.addEventListener('click', () => openPlaceWaitlistSearchModal({ ...o, id: entry.id, _fromRemoved: true }));
+        actionsEl.appendChild(placeBtn);
+
+        const forgetBtn = document.createElement('button');
+        forgetBtn.className = 'btn ghost small';
+        forgetBtn.textContent = 'Definitief verwijderen';
+        forgetBtn.addEventListener('click', () => {
+          confirmAction(
+            'Definitief verwijderen?',
+            `${o.name || 'Deze klant'} verdwijnt dan uit deze lijst en is daarna niet meer terug te zetten.`,
+            () => { forgetRemovedEntries([entry.id]); render(); save(); },
+            'Definitief verwijderen'
+          );
+        });
+        actionsEl.appendChild(forgetBtn);
+        removedSection.appendChild(card);
+      });
+      container.appendChild(removedSection);
+    }
+
     const countLabel = document.createElement('div');
     countLabel.className = 'sub';
     countLabel.style.margin = '0 0 14px';
@@ -2941,6 +3007,115 @@
   // pendingPlacementAanvraagId, but for a locally-stored waitlist entry
   // instead of a signed contract from the separate contract system.
   let pendingPlacementWaitlistId = null;
+  let pendingPlacementRemovedId = null; // same idea, for an entry from "Recent verwijderd"
+
+  // ---------- safety net: customers taken off a bay ----------
+  // A customer only exists as the occupant of a bay, so emptying a bay used
+  // to make them vanish from the whole app. Every removal now lands in
+  // state.removedCustomers for 30 days, from where they can be put back.
+  const REMOVED_KEEP_DAYS = 30;
+
+  function spotLocation(spotId){
+    for(const w of state.warehouses){
+      for(const [key, tagPrefix] of warehouseSides(w)){
+        for(const row of w[key]){
+          const spot = row.spots.find(sp => sp.id === spotId);
+          if(spot) return { warehouse: w, row, spot, tagPrefix, tag: displayTag(spot, tagPrefix) };
+        }
+      }
+    }
+    return null;
+  }
+
+  function pruneRemovedCustomers(){
+    if(!Array.isArray(state.removedCustomers)) state.removedCustomers = [];
+    const cutoff = Date.now() - REMOVED_KEEP_DAYS * 24 * 60 * 60 * 1000;
+    state.removedCustomers = state.removedCustomers.filter(e => e && e.removedAt >= cutoff);
+  }
+
+  // Call BEFORE the occupants are actually taken off (the bay must still be
+  // findable for its name). Returns the new entries, for the undo toast.
+  function recordRemovedOccupants(occupants, spot){
+    const list = (occupants || []).filter(o => o && (o.name || o.objectNummer || o.reg || o.email || o.phone));
+    if(!list.length) return [];
+    pruneRemovedCustomers();
+    const loc = spot ? spotLocation(spot.id) : null;
+    const now = Date.now();
+    const entries = list.map(o => ({
+      id: uid(),
+      removedAt: now,
+      occupant: { name:o.name||'', reg:o.reg||'', since:o.since||'', notes:o.notes||'', away:!!o.away, komtDitJaar:!!o.komtDitJaar, objectNummer:o.objectNummer||'', email:o.email||'', phone:o.phone||'' },
+      spotId: spot ? spot.id : null,
+      spotType: spot ? spot.type : null,
+      warehouseId: loc ? loc.warehouse.id : null,
+      warehouseName: loc ? loc.warehouse.name : '',
+      tag: loc ? loc.tag : '',
+    }));
+    state.removedCustomers.push(...entries);
+    return entries;
+  }
+
+  function forgetRemovedEntries(ids){
+    if(!Array.isArray(state.removedCustomers)) return;
+    state.removedCustomers = state.removedCustomers.filter(e => !ids.includes(e.id));
+  }
+
+  // Bar at the bottom for ~10 seconds after emptying a bay: one tap puts
+  // everything back exactly as it was.
+  let undoToastTimer = null;
+  function showUndoToast(message, onUndo){
+    let toast = document.getElementById('undoToast');
+    if(!toast){
+      toast = document.createElement('div');
+      toast.id = 'undoToast';
+      toast.className = 'undo-toast';
+      document.body.appendChild(toast);
+    }
+    toast.innerHTML = `<span>${escapeHtml(message)}</span><button class="btn small" id="undoToastBtn">Ongedaan maken</button>`;
+    toast.classList.add('show');
+    clearTimeout(undoToastTimer);
+    const hide = () => { toast.classList.remove('show'); };
+    undoToastTimer = setTimeout(hide, 10000);
+    toast.querySelector('#undoToastBtn').addEventListener('click', () => {
+      clearTimeout(undoToastTimer);
+      hide();
+      onUndo();
+    });
+  }
+
+  // Empties a bay the safe way: remembered in "Recent verwijderd", with undo.
+  function clearSpotSafely(spot){
+    const before = (spot.occupants || []).slice();
+    const wasDoor = !!spot.isDoor;
+    if(!before.length){ spot.occupants = []; spot.isDoor = false; render(); save(); return; }
+    const loc = spotLocation(spot.id);
+    const entries = recordRemovedOccupants(before, spot);
+    spot.occupants = [];
+    spot.isDoor = false;
+    render(); save();
+    const who = before.length === 1 ? (before[0].name || 'klant') : `${before.length} klanten`;
+    showUndoToast(`${who} van plek ${loc ? loc.tag : ''} gehaald`, () => {
+      const stillThere = spotLocation(spot.id);
+      if(!stillThere){ alert('Deze plek bestaat niet meer. De klant staat bij Klanten onder "Recent verwijderd".'); return; }
+      if((stillThere.spot.occupants || []).length){ alert('Deze plek is inmiddels weer bezet. De klant staat bij Klanten onder "Recent verwijderd".'); return; }
+      stillThere.spot.occupants = before;
+      stillThere.spot.isDoor = wasDoor;
+      forgetRemovedEntries(entries.map(e => e.id));
+      render(); save();
+    });
+  }
+
+  // Puts a removed customer straight back on the bay they came from (only
+  // offered while that bay is still there and empty).
+  function restoreRemovedToOriginalSpot(entry){
+    const loc = entry.spotId ? spotLocation(entry.spotId) : null;
+    if(!loc || loc.spot.removed || loc.spot.isDoor || (loc.spot.occupants || []).length) return false;
+    loc.spot.occupants = [{ ...entry.occupant }];
+    if(entry.spotType && TYPES[entry.spotType]) loc.spot.type = entry.spotType;
+    forgetRemovedEntries([entry.id]);
+    render(); save();
+    return true;
+  }
 
   function openPlaceWaitlistSearchModal(entry){
     const overlay = document.getElementById('overlay');
@@ -2998,7 +3173,9 @@
     showKlanten = false;
     render();
 
-    pendingPlacementWaitlistId = entry.id;
+    // the same search-and-place flow puts back a customer from "Recent verwijderd"
+    if(entry._fromRemoved) pendingPlacementRemovedId = entry.id;
+    else pendingPlacementWaitlistId = entry.id;
     openSpotModal(null, result.spot, null, null, null, result.tagPrefix, {
       name: entry.name || '',
       reg: entry.reg || '',
@@ -3006,6 +3183,7 @@
       phone: entry.phone || '',
       objectNummer: entry.objectNummer || '',
       notes: entry.notes || '',
+      ...(entry._fromRemoved ? { since: entry.since || '', away: !!entry.away, komtDitJaar: !!entry.komtDitJaar, _wasAway: !!entry.away } : {}),
     });
   }
 
@@ -4458,7 +4636,7 @@
     const auto = autoTag(tagPrefix, spot.seq);
 
     let occDraft = (spot.occupants && spot.occupants.length)
-      ? spot.occupants.map(o => ({ name:o.name||'', reg:o.reg||'', since:o.since||'', notes:o.notes||'', away:!!o.away, komtDitJaar:!!o.komtDitJaar, objectNummer:o.objectNummer||'', email:o.email||'', phone:o.phone||'', _wasAway:!!o.away }))
+      ? spot.occupants.map((o, i) => ({ name:o.name||'', reg:o.reg||'', since:o.since||'', notes:o.notes||'', away:!!o.away, komtDitJaar:!!o.komtDitJaar, objectNummer:o.objectNummer||'', email:o.email||'', phone:o.phone||'', _wasAway:!!o.away, _orig:i }))
       : [{ name:'', reg:'', since:'', notes:'', away:false, komtDitJaar:false, objectNummer:'', email:'', phone:'', _wasAway:false, ...(prefillOccupant || {}) }];
 
     body.innerHTML = `
@@ -4610,9 +4788,8 @@
 
     if(isEditing){
       document.getElementById('clearBtn').addEventListener('click', () => {
-        spot.occupants = [];
-        spot.isDoor = false;
-        closeModal(); render(); save();
+        closeModal();
+        clearSpotSafely(spot);
       });
     }
 
@@ -4658,15 +4835,20 @@
       spot.label = label;
       spot.isDoor = isDoor;
 
+      const occupantsBefore = (spot.occupants || []).slice();
       if(isDoor){
+        recordRemovedOccupants(occupantsBefore, spot);
         spot.occupants = [];
       } else {
         const length = parseFloat(document.getElementById('fLength').value) || TYPES[selectedType].length;
+        const keptDraft = occDraft.filter(o => o.name.trim() || o.reg.trim() || o.notes.trim() || o.objectNummer.trim() || o.email.trim() || o.phone.trim());
+        // rows removed with ✕ (or wiped blank): those customers are remembered
+        const keptOriginals = keptDraft.map(o => o._orig).filter(i => i !== undefined);
+        recordRemovedOccupants(occupantsBefore.filter((o, i) => !keptOriginals.includes(i)), spot);
         spot.type = selectedType;
         spot.length = length;
-        spot.occupants = occDraft
-          .map(o => ({ name:o.name.trim(), reg:o.reg.trim(), since:o.since.trim(), notes:o.notes.trim(), away:!!o.away, komtDitJaar:!!o.komtDitJaar, objectNummer:o.objectNummer.trim(), email:o.email.trim(), phone:o.phone.trim() }))
-          .filter(o => o.name || o.reg || o.notes || o.objectNummer || o.email || o.phone);
+        spot.occupants = keptDraft
+          .map(o => ({ name:o.name.trim(), reg:o.reg.trim(), since:o.since.trim(), notes:o.notes.trim(), away:!!o.away, komtDitJaar:!!o.komtDitJaar, objectNummer:o.objectNummer.trim(), email:o.email.trim(), phone:o.phone.trim() }));
 
         // Anyone newly checked "away" right here (not via an existing
         // Agenda request) gets their own Agenda entry automatically, on
@@ -4701,6 +4883,8 @@
 
       const placedId = pendingPlacementAanvraagId;
       const placedWaitlistId = pendingPlacementWaitlistId;
+      const placedRemovedId = pendingPlacementRemovedId;
+      if(placedRemovedId) forgetRemovedEntries([placedRemovedId]);
       closeModal(); render(); save();
 
       if(placedId && contractDb){
@@ -4726,6 +4910,7 @@
     }
     pendingPlacementAanvraagId = null;
     pendingPlacementWaitlistId = null;
+    pendingPlacementRemovedId = null;
   }
 
   // ---------- reusable confirm dialog for destructive actions ----------
@@ -5164,7 +5349,17 @@
     if(clearBtn){
       const id = clearBtn.getAttribute('data-clear');
       const spot = allSpots().find(s => s.id === id);
-      if(spot){ spot.occupants = []; render(); save(); }
+      if(spot){
+        const names = (spot.occupants || []).map(o => (o.name || 'Naam onbekend') + (o.objectNummer ? ` (${o.objectNummer})` : ''));
+        if(!names.length){ clearSpotSafely(spot); return; }
+        const loc = spotLocation(spot.id);
+        confirmAction(
+          `Plek ${loc ? loc.tag : ''} leegmaken?`,
+          `${names.length === 1 ? names[0] + ' wordt' : names.length + ' klanten (' + names.slice(0, 3).join(', ') + (names.length > 3 ? ', …' : '') + ') worden'} van deze plek gehaald. Je kunt dit daarna nog ongedaan maken, en de klant blijft 30 dagen terug te vinden bij Klanten onder "Recent verwijderd".`,
+          () => clearSpotSafely(spot),
+          'Plek leegmaken'
+        );
+      }
       return;
     }
     const removeSpotBtn = e.target.closest('[data-remove-spot]');
@@ -5172,7 +5367,7 @@
       const id = removeSpotBtn.getAttribute('data-remove-spot');
       warehouseRows(activeWarehouse()).forEach(r => {
         const s = r.spots.find(sp => sp.id === id);
-        if(s){ s.removed = true; s.occupants = []; s.isDoor = false; }
+        if(s){ recordRemovedOccupants(s.occupants, s); s.removed = true; s.occupants = []; s.isDoor = false; }
       });
       render(); save();
       return;
@@ -5203,7 +5398,7 @@
       const w = activeWarehouse();
       if(w[side].length > 1){
         const lastRow = w[side][w[side].length - 1];
-        const doIt = () => { w[side].pop(); render(); save(); };
+        const doIt = () => { lastRow.spots.forEach(sp => recordRemovedOccupants(sp.occupants, sp)); w[side].pop(); render(); save(); };
         if(lastRow.spots.length > 0){
           confirmAction(
             'Deze rij verwijderen?',
@@ -5248,6 +5443,7 @@
         `Dit verwijdert "${wh ? wh.name : 'deze loods'}" en alles wat erin is opgeslagen — plekken, bewoners, alles. Dit kan niet ongedaan worden gemaakt.`,
         () => {
           const removingActive = id === state.activeWarehouseId;
+          if(wh) warehouseSides(wh).forEach(([key]) => wh[key].forEach(row => row.spots.forEach(sp => recordRemovedOccupants(sp.occupants, sp))));
           state.warehouses = state.warehouses.filter(w => w.id !== id);
           if(removingActive) state.activeWarehouseId = state.warehouses[0].id;
           render(); save();
