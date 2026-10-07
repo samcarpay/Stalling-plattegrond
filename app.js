@@ -2656,6 +2656,7 @@
 
   // ---------- klanten: master list of every customer, sorted by object nummer ----------
   let klantenSearchQuery = ''; // persisted across re-renders so typing doesn't reset
+  let klantenOnlyZonderContract = false; // UI-only, not persisted
 
   function renderKlantenPage(){
     const wrap = document.getElementById('plan');
@@ -2708,6 +2709,21 @@
     searchInput.value = klantenSearchQuery;
     searchInput.style.cssText = 'flex:1;min-width:220px;padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius);font-size:13.5px;font-family:inherit;background:var(--card);color:var(--ink);';
     toolbarRow.appendChild(searchInput);
+    // Needs the contract connection (NIEUWE_KLANTEN_ENABLED) — without it
+    // every customer would look "zonder contract", so the button is hidden.
+    const noContractBtn = document.createElement('button');
+    noContractBtn.title = 'Toon alleen klanten waarvan het object nummer niet bij een getekend contract hoort.';
+    const syncNoContractBtn = () => {
+      noContractBtn.className = klantenOnlyZonderContract ? 'btn small' : 'btn ghost small';
+      noContractBtn.textContent = klantenOnlyZonderContract ? '✕ Zonder contract' : 'Zonder contract';
+    };
+    syncNoContractBtn();
+    noContractBtn.addEventListener('click', () => {
+      klantenOnlyZonderContract = !klantenOnlyZonderContract;
+      syncNoContractBtn();
+      renderFilteredRows();
+    });
+    if(contractDb) toolbarRow.appendChild(noContractBtn);
     const addBtn = document.createElement('button');
     addBtn.className = 'btn small';
     addBtn.textContent = '+ Nieuwe klant toevoegen';
@@ -2894,14 +2910,17 @@
 
     function renderFilteredRows(){
       const q = klantenSearchQuery.trim().toLowerCase();
-      const rows = !q ? allRows : allRows.filter(r => {
+      const onlyNoContract = klantenOnlyZonderContract && !!contractDb;
+      const rows = (!q && !onlyNoContract) ? allRows : allRows.filter(r => {
         const o = r.occupant;
+        if(onlyNoContract && signedContractsByObjNum[(o.objectNummer || '').trim().toLowerCase()]) return false;
+        if(!q) return true;
         const hay = [o.name, o.reg, o.objectNummer, o.phone, o.email, r.warehouse.name].filter(Boolean).join(' ').toLowerCase();
         return hay.includes(q);
       });
 
-      countLabel.textContent = q
-        ? `${rows.length} van ${allRows.length} klanten gevonden.`
+      countLabel.textContent = (q || onlyNoContract)
+        ? `${rows.length} van ${allRows.length} klanten gevonden${onlyNoContract ? ' zonder getekend contract' : ''}.`
         : `${allRows.length} klant${allRows.length===1?'':'en'}, gesorteerd op object nummer.`;
 
       if(rows.length === 0){
