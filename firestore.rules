@@ -1,0 +1,97 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Logged in with e-mail and password. Leftover anonymous sign-ins from
+    // before anonymous login was switched off do NOT count.
+    function medewerker() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    // ---- checks for a request sent in by a visitor (not logged in) ----
+    // These repeat, at the database itself, what the sign-up form checks
+    // (see spam-check.js on the website) — so a bot that skips the form
+    // and writes straight to the database is refused as well.
+
+    function tekst(v, min, max) {
+      return v is string && v.size() >= min && v.size() <= max;
+    }
+
+    // random-case gibberish such as "YaflrTiWztvlJJiA": one word that
+    // switches from lower to upper case three or more times
+    function geenWillekeur(v) {
+      return !v.matches('.*[a-z][A-Z][^ ]*[a-z][A-Z][^ ]*[a-z][A-Z].*');
+    }
+
+    // a size in meters, e.g. "6.5"
+    function maat(v, min, max) {
+      return v is string
+        && v.matches('^[0-9]{1,2}([.][0-9]{1,2})?$')
+        && float(v) >= min && float(v) <= max;
+    }
+
+    // empty, or a date from today (2 days of slack for time zones) up to
+    // about two years ahead — never a start date in the past
+    function gewensteDatumOk(v) {
+      return v == ''
+        || (v is string
+            && v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+            && timestamp.date(int(v[0:4]), int(v[5:7]), int(v[8:10])) > request.time - duration.value(2, 'd')
+            && timestamp.date(int(v[0:4]), int(v[5:7]), int(v[8:10])) < request.time + duration.value(800, 'd'));
+    }
+
+    function geldigeAanvraag(d) {
+      return d.keys().hasOnly(['voornaam','achternaam','adres','postcode','woonplaats','email','telefoon',
+                               'categorie','kenteken','merk','type','lengte','breedte',
+                               'gewenstedatum','opmerkingen','status','ingediendOp'])
+        && d.keys().hasAll(['voornaam','achternaam','adres','postcode','woonplaats','email','telefoon',
+                            'categorie','merk','type','lengte','breedte','status','ingediendOp'])
+        && d.status == 'nieuw'
+        && d.ingediendOp == request.time
+        && tekst(d.voornaam, 1, 60) && geenWillekeur(d.voornaam)
+        && tekst(d.achternaam, 1, 80) && geenWillekeur(d.achternaam)
+        && tekst(d.adres, 3, 120) && geenWillekeur(d.adres)
+        && tekst(d.postcode, 4, 12)
+        && tekst(d.woonplaats, 2, 80) && geenWillekeur(d.woonplaats)
+        && tekst(d.email, 6, 120) && d.email.matches('^[^@ ]+@[^@ ]+[.][^@ ]+$')
+        && tekst(d.telefoon, 8, 60)
+        && d.categorie in ['Caravan','Vouwwagen','Camper','Boot','Auto','Motorfiets','Aanhanger','Overig']
+        && tekst(d.merk, 1, 60) && geenWillekeur(d.merk)
+        && tekst(d.type, 1, 60) && geenWillekeur(d.type)
+        && maat(d.lengte, 0.5, 30)
+        && maat(d.breedte, 0.3, 6)
+        && tekst(d.get('kenteken', ''), 0, 20)
+        && gewensteDatumOk(d.get('gewenstedatum', ''))
+        && tekst(d.get('opmerkingen', ''), 0, 2000);
+    }
+
+    match /aanvragen/{docId} {
+      // Logged in (the contract program): anything, e.g. a contract you
+      // create yourself. A visitor: only a complete, plausible request.
+      allow create: if medewerker()
+                    || geldigeAanvraag(request.resource.data);
+
+      // Single-document reads — e.g. the sign-link page (onderteken.html)
+      // loading one specific contract by its own ID.
+      allow get: if medewerker()
+                  || resource.data.status == 'klaar_voor_ondertekening'
+                  || resource.data.status == 'voltooid';
+
+      // Listing/querying the whole collection is staff-only.
+      allow list: if medewerker();
+
+      allow update: if medewerker()
+              || (
+                resource.data.status == 'klaar_voor_ondertekening'
+                && request.resource.data.status == 'voltooid'
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['handtekening','status','ondertekendOp','ondertekenMethode'])
+              );
+      allow delete: if medewerker();
+    }
+
+    match /imports/{docId} {
+      allow read, write: if medewerker();
+    }
+  }
+}

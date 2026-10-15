@@ -12,5 +12,8 @@
         "*.log"
       ]
     }
-  ]
+  ],
+  "firestore": {
+    "rules": "firestore.rules"
+  }
 }
