@@ -1,17 +1,17 @@
   :root{
-    --paper: #F5F1E6;
-    --paper-line: #E8E0CC;
-    --ink: #1F2D27;
-    --ink-soft: #5B6B61;
-    --ink-faint: #93A097;
+    --paper: #F7F6F2;
+    --paper-line: #E5E4E0;
+    --ink: #1C1C1C;
+    --ink-soft: #5C5C5C;
+    --ink-faint: #6F6F6B;
     --card: #FFFFFF;
-    --line: #E1D8C0;
+    --line: #E5E4E0;
 
-    --accent: #2F6350;
-    --accent-strong: #1F4436;
-    --accent-soft: #DCE8E2;
-    --shadow-sm: 0 1px 2px rgba(31,45,39,.06), 0 4px 14px -6px rgba(31,45,39,.14);
-    --shadow-md: 0 10px 30px -12px rgba(31,45,39,.28);
+    --accent: #1E1E1E;
+    --accent-strong: #1E1E1E;
+    --accent-soft: #EFEFED;
+    --shadow-sm: 0 1px 2px rgba(20,20,20,.06), 0 4px 14px -6px rgba(20,20,20,.14);
+    --shadow-md: 0 10px 30px -12px rgba(20,20,20,.28);
 
     --car: #B54834;
     --car-soft: #F1DAD2;
@@ -26,7 +26,7 @@
 
     --radius: 10px;
     --radius-lg: 18px;
-    --font-display: ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
+    --font-display: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   }
 
@@ -102,7 +102,7 @@
     text-transform:uppercase;
     margin-bottom:4px;
   }
-  .titleblock .eyebrow{color:#CFE0D6;}
+  .titleblock .eyebrow{color:#D6D6D6;}
   #facilityName{
     font-family:var(--font-display);
     font-weight:700;
@@ -117,11 +117,11 @@
     max-width:100%;
   }
   #facilityName:focus{background:var(--card);box-shadow:0 0 0 1px var(--line);}
-  .titleblock #facilityName{color:#F3F0E6;}
-  .titleblock #facilityName:focus{background:rgba(255,255,255,.14);box-shadow:0 0 0 1px rgba(255,255,255,.4);color:#F3F0E6;}
+  .titleblock #facilityName{color:#FFFFFF;font-weight:800;letter-spacing:-.01em;}
+  .titleblock #facilityName:focus{background:rgba(255,255,255,.14);box-shadow:0 0 0 1px rgba(255,255,255,.4);color:#FFFFFF;}
   .scale-note{font-size:12px;color:var(--ink-faint);margin-top:4px;font-family:var(--font-display);}
-  .titleblock .scale-note{color:#CFE0D6;}
-  .titleblock .btn.ghost{color:#F3F0E6;border-color:rgba(255,255,255,.35);}
+  .titleblock .scale-note{color:#D6D6D6;}
+  .titleblock .btn.ghost{color:#FFFFFF;border-color:rgba(255,255,255,.35);}
   .titleblock .btn.ghost:hover{color:#fff;border-color:rgba(255,255,255,.6);}
 
   .stats{display:flex;gap:10px;flex-wrap:wrap;}
@@ -134,7 +134,7 @@
     text-align:center;
     min-width:64px;
   }
-  .stat .n{font-family:var(--font-display);font-weight:700;font-size:19px;line-height:1;}
+  .stat .n{font-family:var(--font-display);font-variant-numeric:tabular-nums;font-weight:700;font-size:19px;line-height:1;}
   .stat .l{font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;}
 
   /* ---------- warehouse tabs ---------- */
@@ -271,9 +271,9 @@
   .search-empty{padding:14px 12px;font-size:12.5px;color:var(--ink-faint);text-align:center;}
 
   @keyframes bayPulse{
-    0%{box-shadow:0 0 0 0 rgba(47,99,80,.55);}
-    70%{box-shadow:0 0 0 10px rgba(47,99,80,0);}
-    100%{box-shadow:0 0 0 0 rgba(47,99,80,0);}
+    0%{box-shadow:0 0 0 0 rgba(30,30,30,.45);}
+    70%{box-shadow:0 0 0 10px rgba(30,30,30,0);}
+    100%{box-shadow:0 0 0 0 rgba(30,30,30,0);}
   }
   .spot.jump-highlight{animation:bayPulse 1s ease-out 2;}
 
@@ -640,7 +640,7 @@
     .spot:hover .spot-del{display:flex;}
   }
 
-  .spot.long-stay{border-left-width:4px;border-left-color:var(--trailer);}
+  /* long stay (> 1 year) is shown by the ⏱ badge only; no thicker left border */
   .long-stay-badge{
     position:absolute;top:-7px;left:-7px;
     width:16px;height:16px;border-radius:50%;
