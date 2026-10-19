@@ -582,7 +582,8 @@
   let werkloodsBookings = []; // [{id, kind:'werkloods'|'overig', title, startDate, endDate, startTime, endTime, notes, createdAt}]
   let werkloodsRef = null;
   let showPlanning = false;         // UI-only, not persisted
-  let planningView = 'week';        // 'day' | 'week' | 'month' — UI-only, not persisted
+  let planningView = 'overzicht';   // 'overzicht' (Deze week) | 'day' | 'week' | 'month' — UI-only, not persisted
+  let overzichtMonthRef = new Date(); // which month the agenda under 'Deze week' shows — UI-only, not persisted
   let planningRefDate = new Date(); // anchor date for whichever view is showing — UI-only, not persisted
   let miniCalRefDate = new Date();  // which month the sidebar mini calendar shows — browsed independently of the main view, UI-only
   let planningSidebarDayIso = plnIso(new Date()); // which day's items show in the sidebar's day-detail card — UI-only, not persisted
@@ -1213,14 +1214,23 @@
     return monday;
   }
 
-  function openReturnConfirmModal(info, occupant){
+  // When the vehicle is back, the pickup appointment is finished: mark it
+  // 'done' so it leaves the agenda (it stays under 'Afgeronde' and can be
+  // restored there).
+  function completeAppointmentAfterReturn(appt){
+    if(appt && appointmentsRef && appt.status !== 'done'){
+      appointmentsRef.child(appt.id).update({ status: 'done', completedAt: Date.now() });
+    }
+  }
+
+  function openReturnConfirmModal(info, occupant, appt){
     const overlay = document.getElementById('overlay');
     const body = document.getElementById('modalBody');
     body.className = 'modal';
     const tag = displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R'));
     body.innerHTML = `
       <h3>Terug gemeld</h3>
-      <div class="sub">Waar staat het voertuig nu? Meestal is dit dezelfde plek — kies "Andere plek" als het ergens anders is neergezet.</div>
+      <div class="sub">Waar staat het voertuig nu? Meestal is dit dezelfde plek — kies "Andere plek" als het ergens anders is neergezet.${appt ? ' De ophaalafspraak wordt daarna afgerond en verdwijnt uit de agenda.' : ''}</div>
       <div class="modal-actions" style="flex-direction:column;align-items:stretch;gap:8px;">
         <button class="btn" id="sameBayBtn">Zelfde plek (${escapeHtml(tag)})</button>
         <button class="btn ghost" id="otherBayBtn">Andere plek…</button>
@@ -1231,11 +1241,12 @@
     document.getElementById('sameBayBtn').addEventListener('click', () => {
       if(occupant) occupant.away = false;
       closeModal();
+      completeAppointmentAfterReturn(appt);
       render(); save();
     });
     document.getElementById('otherBayBtn').addEventListener('click', () => {
       closeModal();
-      openMoveReturnedVehicleSearchModal(info, occupant);
+      openMoveReturnedVehicleSearchModal(info, occupant, appt);
     });
     document.getElementById('returnCancelBtn').addEventListener('click', closeModal);
     overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
@@ -1337,7 +1348,7 @@
     overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
   }
 
-  function openMoveReturnedVehicleSearchModal(info, occupant){
+  function openMoveReturnedVehicleSearchModal(info, occupant, appt){
     const overlay = document.getElementById('overlay');
     const body = document.getElementById('modalBody');
     body.className = 'modal wide';
@@ -1380,6 +1391,7 @@
           occupant.away = false;
           r.spot.occupants = (r.spot.occupants || []).concat([occupant]);
           closeModal();
+          completeAppointmentAfterReturn(appt);
           render(); save();
         });
       });
@@ -1552,7 +1564,7 @@
       awayBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         if(away){
-          openReturnConfirmModal(info, matchedOcc);
+          openReturnConfirmModal(info, matchedOcc, a);
         } else if(matchedOcc){
           matchedOcc.away = true;
           render(); save();
@@ -2018,7 +2030,7 @@
       document.getElementById('plnPickupAwayBtn').addEventListener('click', () => {
         if(away){
           closeModal();
-          openReturnConfirmModal(info, matchedOcc);
+          openReturnConfirmModal(info, matchedOcc, a);
         } else if(matchedOcc){
           matchedOcc.away = true;
           closeModal();
@@ -2173,7 +2185,9 @@
     const monday = plnMonday(planningRefDate);
     const sunday = plnAddDays(monday, 6);
     let title;
-    if(planningView === 'week'){
+    if(planningView === 'overzicht'){
+      title = `Week ${plnIsoWeek(monday)} · ${monday.getDate()} ${DUTCH_MONTH_NAMES[monday.getMonth()]} – ${sunday.getDate()} ${DUTCH_MONTH_NAMES[sunday.getMonth()]}`;
+    } else if(planningView === 'week'){
       const sameMonth = monday.getMonth() === sunday.getMonth();
       title = sameMonth
         ? `${monday.getDate()} – ${sunday.getDate()} ${DUTCH_MONTH_NAMES[monday.getMonth()]} ${monday.getFullYear()}`
@@ -2195,11 +2209,12 @@
       <div class="pln-title">${escapeHtml(title)}</div>
       <div style="flex-grow:1;"></div>
       <div class="pln-view-toggle">
+        <button class="pln-view-btn ${planningView==='overzicht'?'active':''}" data-view="overzicht">Deze week</button>
         <button class="pln-view-btn ${planningView==='day'?'active':''}" data-view="day">Dag</button>
         <button class="pln-view-btn ${planningView==='week'?'active':''}" data-view="week">Week</button>
         <button class="pln-view-btn ${planningView==='month'?'active':''}" data-view="month">Maand</button>
       </div>
-      <button class="btn small" id="plnAddBtn">+ Nieuwe planningsafspraak</button>
+      <button class="btn small" id="plnAddBtn">+ ${planningView==='overzicht' ? 'Afspraak' : 'Nieuwe planningsafspraak'}</button>
     `;
     container.appendChild(toolbar);
 
@@ -2224,6 +2239,7 @@
     toolbar.querySelector('#plnTodayBtn').addEventListener('click', () => {
       planningRefDate = new Date();
       miniCalRefDate = new Date();
+      overzichtMonthRef = new Date();
       renderPlanningPage();
     });
     toolbar.querySelectorAll('[data-view]').forEach(btn => {
@@ -2233,6 +2249,12 @@
       });
     });
     toolbar.querySelector('#plnAddBtn').addEventListener('click', () => openPlanningBookingModal(null));
+
+    if(planningView === 'overzicht'){
+      renderPlanningOverzicht(container, monday);
+      wrap.appendChild(container);
+      return;
+    }
 
     const bodyRow = document.createElement('div');
     bodyRow.className = 'pln-body';
@@ -2249,6 +2271,280 @@
     else renderPlanningMonthView(main);
 
     wrap.appendChild(container);
+  }
+
+  // ---------- 'Deze week': operational overview (start screen of Planning) ----------
+  // Puts the week's pickups first: a 7-day strip with counts, one list of all
+  // appointments grouped per day, what to get ready today/tomorrow, who is
+  // currently away (with the existing 'Terug gemeld' flow), and the month
+  // agenda underneath. Uses only data the app already has — no new fields.
+  function plnIsoWeek(d){
+    const t = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    t.setDate(t.getDate() + 3 - ((t.getDay() + 6) % 7));
+    const firstThu = new Date(t.getFullYear(), 0, 4);
+    return 1 + Math.round(((t - firstThu) / 86400000 - 3 + ((firstThu.getDay() + 6) % 7)) / 7);
+  }
+
+  function plnPickupDetail(a){
+    const info = findLinkedInfo(a.linked);
+    const occ = info ? findMatchingOccupant(info.spot, a) : null;
+    const tag = info ? displayTag(info.spot, info.warehouse.layout==='single' ? '' : (info.side==='left'?'L':'R')) : '';
+    return { info, occ, away: occ ? !!occ.away : false, place: info ? `${info.warehouse.name} · ${tag}` : '', tag };
+  }
+
+  function plnItemsByDate(items){
+    const byDate = {};
+    items.forEach(it => {
+      let d = plnParseIso(it.startDate);
+      const end = plnParseIso(it.endDate);
+      while(d <= end){
+        const iso = plnIso(d);
+        (byDate[iso] = byDate[iso] || []).push(it);
+        d = plnAddDays(d, 1);
+      }
+    });
+    return byDate;
+  }
+
+  function plnMarkAway(a){
+    const det = plnPickupDetail(a);
+    if(!det.info){ openLinkAppointmentModal(a.id); return; }
+    if(det.away){ openReturnConfirmModal(det.info, det.occ, a); return; }
+    if(det.occ){ det.occ.away = true; render(); save(); return; }
+    alert('Kan niet met zekerheid bepalen welk voertuig in deze plek het betreft (meerdere voertuigen, geen duidelijke overeenkomst met naam of object nummer). Pas de plek zelf handmatig aan om deze klant als weg te markeren.');
+  }
+
+  function renderPlanningOverzicht(container, monday){
+    const todayIso = plnToday();
+    const tomorrowIso = plnIso(plnAddDays(plnParseIso(todayIso), 1));
+    const items = plnAllItems();
+    const byDate = plnItemsByDate(items);
+    const days = [0,1,2,3,4,5,6].map(i => plnIso(plnAddDays(monday, i)));
+    const pickupsOn = iso => (byDate[iso] || []).filter(it => it.kind === 'ophalen');
+    const weekPickups = days.reduce((n, iso) => n + pickupsOn(iso).length, 0);
+    const weekOther = days.reduce((n, iso) => n + (byDate[iso] || []).filter(it => it.kind !== 'ophalen' && it.startDate === iso).length, 0);
+    const maxDay = Math.max(1, ...days.map(iso => pickupsOn(iso).length));
+    const apptById = {};
+    appointments.forEach(a => { apptById[a.id] = a; });
+    const timeOf = it => it.time ? it.time + (it.endTime ? '–' + it.endTime : '') : (it.endDate !== it.startDate ? 'hele dag' : '—');
+    const shortDay = iso => { const d = plnParseIso(iso); return `${DUTCH_DAY_NAMES[d.getDay()].slice(0,2).toLowerCase()} ${d.getDate()}`; };
+
+    const root = document.createElement('div');
+    root.className = 'plo';
+
+    // ---- heading ----
+    const head = document.createElement('div');
+    head.className = 'plo-head';
+    head.innerHTML = `
+      <div class="plo-h1">${weekPickups} keer ophalen</div>
+      <div class="plo-sub">${weekOther ? `plus ${weekOther} werkloods/overig · ` : ''}${days.includes(todayIso) ? 'deze week' : (monday > plnParseIso(todayIso) ? 'komende week' : 'eerdere week')}</div>
+    `;
+    root.appendChild(head);
+
+    // ---- 7-day strip ----
+    const strip = document.createElement('div');
+    strip.className = 'plo-strip';
+    strip.innerHTML = days.map(iso => {
+      const n = pickupsOn(iso).length;
+      const blocked = !!(blockedDates && blockedDates[iso]);
+      const cls = ['plo-daytile'];
+      if(iso === todayIso) cls.push('is-today');
+      if(iso < todayIso) cls.push('is-past');
+      if(blocked) cls.push('is-blocked');
+      return `<button type="button" class="${cls.join(' ')}" data-jump="${iso}">
+        <span class="plo-daytile-d">${shortDay(iso)}${iso === todayIso ? '<span class="plo-tdl"> · vandaag</span>' : ''}</span>
+        <span class="plo-daytile-n">${blocked && !n ? '—' : n}</span>
+        ${blocked ? '<span class="plo-daytile-x">geblokkeerd</span>' : `<span class="plo-daytile-bar"><span style="width:${Math.round(n / maxDay * 100)}%"></span></span>`}
+      </button>`;
+    }).join('');
+    root.appendChild(strip);
+
+    const layout = document.createElement('div');
+    layout.className = 'plo-layout';
+    root.appendChild(layout);
+
+    // ---- one list, grouped per day ----
+    const list = document.createElement('section');
+    list.className = 'plo-list';
+    let html = '';
+    const rowItems = [];
+    days.forEach(iso => {
+      const dayItems = (byDate[iso] || []).slice().sort((a, b) => (a.time || '00:00').localeCompare(b.time || '00:00'));
+      const d = plnParseIso(iso);
+      const nP = dayItems.filter(it => it.kind === 'ophalen').length;
+      const nW = dayItems.filter(it => it.kind === 'werkloods').length;
+      const nO = dayItems.filter(it => it.kind === 'overig').length;
+      const counts = [nP ? `${nP} ophalen` : '', nW ? `${nW} werkloods` : '', nO ? `${nO} overig` : ''].filter(Boolean).join(' · ');
+      const blocked = !!(blockedDates && blockedDates[iso]);
+      const label = `${DUTCH_DAY_NAMES[d.getDay()]} ${d.getDate()} ${DUTCH_MONTH_NAMES[d.getMonth()]}${iso === todayIso ? ' · vandaag' : (iso === tomorrowIso ? ' · morgen' : '')}`;
+      html += `<h3 class="plo-dayh${iso === todayIso ? ' is-today' : ''}${iso < todayIso ? ' is-past' : ''}" id="plo-${iso}"><span>${escapeHtml(label)}</span><span>${blocked ? 'geblokkeerd' : (counts || 'niets gepland')}</span></h3>`;
+      dayItems.forEach(it => {
+        const idx = rowItems.push(it) - 1;
+        if(it.kind === 'ophalen'){
+          const a = apptById[it.apptId];
+          const det = a ? plnPickupDetail(a) : { info:null, away:false, place:'' };
+          let status;
+          if(!det.info) status = `<button type="button" class="plo-btn warn" data-act="link" data-idx="${idx}">Koppel aan plek</button>`;
+          else if(det.away) status = `<span class="plo-pill away">Weg</span><button type="button" class="plo-btn ok" data-act="away" data-idx="${idx}">↩ Terug</button>`;
+          else status = `<button type="button" class="plo-btn${iso > todayIso ? ' later' : ''}" data-act="away" data-idx="${idx}">Opgehaald</button>`;
+          html += `<div class="plo-row${det.away ? ' is-away' : ''}" data-idx="${idx}">
+            <span class="plo-time">${escapeHtml(timeOf(it))}</span>
+            <span class="plo-name">${escapeHtml((a && a.name) || 'Naam onbekend')}</span>
+            <span class="plo-obj">${escapeHtml((a && a.vehicleDesc) || '')}</span>
+            <span class="plo-place">${det.place ? escapeHtml(det.place) : '<em>nog niet gekoppeld</em>'}</span>
+            <span class="plo-status">${status}</span>
+          </div>`;
+        } else {
+          html += `<div class="plo-row is-${it.kind}" data-idx="${idx}">
+            <span class="plo-time">${escapeHtml(timeOf(it))}</span>
+            <span class="plo-name">${escapeHtml(it.title)}</span>
+            <span class="plo-obj">${escapeHtml(it.sub || '')}</span>
+            <span class="plo-place">${it.endDate !== it.startDate ? 't/m ' + escapeHtml(formatDutchDate(it.endDate)) : ''}</span>
+            <span class="plo-status"><span class="plo-pill ${it.kind}">${PLN_META[it.kind].label}</span></span>
+          </div>`;
+        }
+      });
+    });
+    list.innerHTML = html;
+    layout.appendChild(list);
+
+    // ---- side column ----
+    const aside = document.createElement('div');
+    aside.className = 'plo-aside';
+    layout.appendChild(aside);
+
+    // Klaarzetten: linked pickups today + tomorrow that are still in the storage, per loods
+    const prep = appointments.filter(a => a.status !== 'done' && (a.date === todayIso || a.date === tomorrowIso))
+      .map(a => ({ a, det: plnPickupDetail(a) }))
+      .filter(x => x.det.info && !x.det.away)
+      .sort((x, y) => `${x.a.date} ${x.a.time||''}`.localeCompare(`${y.a.date} ${y.a.time||''}`));
+    const prepByWh = {};
+    prep.forEach(x => { (prepByWh[x.det.info.warehouse.name] = prepByWh[x.det.info.warehouse.name] || []).push(x); });
+    const prepCard = document.createElement('section');
+    prepCard.className = 'plo-card';
+    prepCard.innerHTML = `<h3 class="plo-card-h">Klaarzetten</h3><div class="plo-card-sub">Vandaag en morgen, per loods</div>` +
+      (prep.length ? Object.keys(prepByWh).map(wh => `<div class="plo-card-group">${escapeHtml(wh)}</div>` +
+        prepByWh[wh].map(x => `<div class="plo-line"><span><strong>${escapeHtml(x.det.tag)}</strong> ${escapeHtml(x.a.name || '')}</span><span class="${x.a.date === todayIso ? 'plo-today' : 'plo-muted'}">${x.a.date === todayIso ? 'vandaag' : 'morgen'}${x.a.time ? ' ' + escapeHtml(x.a.time) : ''}</span></div>`).join('')
+      ).join('') : `<div class="plo-empty">Niets klaar te zetten.</div>`);
+    aside.appendChild(prepCard);
+
+    // Momenteel weg
+    const awayList = appointments.filter(a => a.status !== 'done').map(a => ({ a, det: plnPickupDetail(a) })).filter(x => x.det.away)
+      .sort((x, y) => (x.a.date || '').localeCompare(y.a.date || ''));
+    const awayCard = document.createElement('section');
+    awayCard.className = 'plo-card';
+    awayCard.innerHTML = `<h3 class="plo-card-h">Momenteel weg · ${awayList.length}</h3><div class="plo-card-sub">Opgehaald, nog niet terug. Tik op Terug als het object er weer staat; de afspraak gaat dan uit de agenda.</div>` +
+      (awayList.length ? awayList.map((x, i) => `<div class="plo-line"><span><strong>${escapeHtml(x.a.name || 'Naam onbekend')}</strong><span class="plo-muted plo-block">${escapeHtml(x.det.place)}${x.a.date ? ' · sinds ' + escapeHtml(formatDutchDate(x.a.date)) : ''}</span></span><button type="button" class="plo-btn ok" data-away-idx="${i}">↩ Terug</button></div>`).join('')
+        : `<div class="plo-empty">Niemand is weg.</div>`);
+    awayCard.querySelectorAll('[data-away-idx]').forEach(btn => btn.addEventListener('click', () => {
+      const x = awayList[parseInt(btn.getAttribute('data-away-idx'), 10)];
+      openReturnConfirmModal(x.det.info, x.det.occ, x.a);
+    }));
+    aside.appendChild(awayCard);
+
+    // Nog koppelen (requests not yet linked to a spot)
+    const unlinked = appointments.filter(a => a.status !== 'done' && !findLinkedInfo(a.linked));
+    if(unlinked.length){
+      const uCard = document.createElement('section');
+      uCard.className = 'plo-card';
+      uCard.innerHTML = `<h3 class="plo-card-h">Nog koppelen · ${unlinked.length}</h3><div class="plo-card-sub">Aanvragen zonder plek</div>` +
+        unlinked.slice(0, 6).map((a, i) => `<div class="plo-line"><span><strong>${escapeHtml(a.name || 'Naam onbekend')}</strong><span class="plo-muted plo-block">${escapeHtml(a.date ? formatApptWhen(a) : 'geen datum')}</span></span><button type="button" class="plo-btn warn" data-link-idx="${i}">Koppel</button></div>`).join('');
+      uCard.querySelectorAll('[data-link-idx]').forEach(btn => btn.addEventListener('click', () => openLinkAppointmentModal(unlinked[parseInt(btn.getAttribute('data-link-idx'), 10)].id)));
+      aside.appendChild(uCard);
+    }
+
+    // ---- wiring: rows, buttons, strip ----
+    list.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const it = rowItems[parseInt(btn.getAttribute('data-idx'), 10)];
+      const a = apptById[it.apptId];
+      if(!a) return;
+      if(btn.getAttribute('data-act') === 'link') openLinkAppointmentModal(a.id);
+      else plnMarkAway(a);
+    }));
+    list.querySelectorAll('.plo-row[data-idx]').forEach(row => row.addEventListener('click', () => plnClickItem(rowItems[parseInt(row.getAttribute('data-idx'), 10)])));
+    strip.querySelectorAll('[data-jump]').forEach(btn => btn.addEventListener('click', () => {
+      const h = document.getElementById('plo-' + btn.getAttribute('data-jump'));
+      if(h) h.scrollIntoView({ behavior:'smooth', block:'start' });
+    }));
+
+    // ---- month agenda underneath ----
+    root.appendChild(renderPlanningOverzichtMonth(byDate, todayIso, days));
+    container.appendChild(root);
+  }
+
+  function renderPlanningOverzichtMonth(byDate, todayIso, weekDays){
+    const y = overzichtMonthRef.getFullYear();
+    const m = overzichtMonthRef.getMonth();
+    const first = new Date(y, m, 1);
+    const gridStart = plnMonday(first);
+    const last = new Date(y, m + 1, 0);
+    const cells = Math.ceil((Math.round((last - gridStart) / 86400000) + 1) / 7) * 7;
+    const weekSet = new Set(weekDays);
+    let monthPickups = 0;
+    let cellHtml = '';
+    for(let i = 0; i < cells; i++){
+      const d = plnAddDays(gridStart, i);
+      const iso = plnIso(d);
+      const its = byDate[iso] || [];
+      const nP = its.filter(it => it.kind === 'ophalen').length;
+      const nW = its.filter(it => it.kind === 'werkloods').length;
+      const nO = its.filter(it => it.kind === 'overig').length;
+      if(d.getMonth() === m) monthPickups += nP;
+      const blocked = !!(blockedDates && blockedDates[iso]);
+      const cls = ['plo-mcell'];
+      if(d.getMonth() !== m) cls.push('out');
+      if(iso < todayIso) cls.push('is-past');
+      if(iso === todayIso) cls.push('is-today');
+      if(weekSet.has(iso)) cls.push('in-week');
+      if(blocked) cls.push('is-blocked');
+      const chip = (n, kind, label) => n ? `<span class="plo-chip" style="--c:${PLN_META[kind].color};--s:${PLN_META[kind].soft}"><i></i><b>${n}</b><span> ${label}</span></span>` : '';
+      cellHtml += `<button type="button" class="${cls.join(' ')}" data-mdate="${iso}">
+        <span class="plo-mnum">${d.getDate()}</span>
+        ${blocked ? '<span class="plo-mblk">geblokkeerd</span>' : ''}
+        ${chip(nP, 'ophalen', 'ophalen')}${chip(nW, 'werkloods', 'werkloods')}${chip(nO, 'overig', 'overig')}
+      </button>`;
+    }
+    const sec = document.createElement('section');
+    sec.className = 'plo-month';
+    sec.innerHTML = `
+      <div class="plo-month-bar">
+        <h3 class="plo-month-h">Agenda</h3>
+        <button type="button" class="pln-nav-btn" data-mnav="-1" aria-label="Vorige maand">‹</button>
+        <span class="plo-month-title">${DUTCH_MONTH_NAMES[m].charAt(0).toUpperCase() + DUTCH_MONTH_NAMES[m].slice(1)} ${y}</span>
+        <button type="button" class="pln-nav-btn" data-mnav="1" aria-label="Volgende maand">›</button>
+        <span class="plo-muted">${monthPickups} keer ophalen</span>
+      </div>
+      <div class="plo-mhead">${['ma','di','wo','do','vr','za','zo'].map(n => `<span>${n}</span>`).join('')}</div>
+      <div class="plo-mgrid">${cellHtml}</div>
+      <div class="plo-mlegend">
+        <span><i style="background:${PLN_META.ophalen.color}"></i> ophalen</span>
+        <span><i style="background:${PLN_META.werkloods.color}"></i> werkloods</span>
+        <span><i style="background:${PLN_META.overig.color}"></i> overig</span>
+        <span>Omlijnd = gekozen week · tik op een dag voor de dagplanning</span>
+      </div>
+    `;
+    sec.querySelectorAll('[data-mnav]').forEach(btn => btn.addEventListener('click', () => {
+      overzichtMonthRef = new Date(y, m + parseInt(btn.getAttribute('data-mnav'), 10), 1);
+      renderPlanningPage();
+    }));
+    // swipe left/right on the month to browse, like the mini calendar
+    let sx = null;
+    sec.addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive:true });
+    sec.addEventListener('touchend', e => {
+      if(sx === null) return;
+      const dx = e.changedTouches[0].clientX - sx; sx = null;
+      if(Math.abs(dx) > 60){ overzichtMonthRef = new Date(y, m + (dx < 0 ? 1 : -1), 1); renderPlanningPage(); }
+    });
+    sec.querySelectorAll('[data-mdate]').forEach(cell => cell.addEventListener('click', () => {
+      const iso = cell.getAttribute('data-mdate');
+      planningRefDate = plnParseIso(iso);
+      planningView = 'day';
+      planningSidebarDayIso = iso;
+      miniCalRefDate = new Date(planningRefDate);
+      renderPlanningPage();
+    }));
+    return sec;
   }
 
   function renderPlanningSidebar(){
