@@ -4,8 +4,8 @@
 // Runs in a browser against a TEST COPY of the data, never the real
 // data (switching warehouses etc. saves). Steps:
 //   1. tests/make-test-copy.sh            → builds .claude/synctest/, the
-//      app pointed at SYNC_PATH/synctest-copy, with its own copy of the
-//      pickup requests at SYNC_PATH/synctest-copy/appointments (git-ignored)
+//      app pointed at SYNC_PATH/synctest-copy, with its own copies of the
+//      pickup requests and werkloods/overig bookings under it (git-ignored)
 //   2. serve the repo folder (python3 -m http.server 8080), log in at
 //      http://localhost:8080/index.html
 //   3. on that page, load this file and copy the real data across:
@@ -32,7 +32,9 @@ window.smokeTest = (() => {
     await db.ref(TEST_PATH + '/data').set(raw);
     const appts = (await db.ref('pickup-appointments').once('value')).val() || {};
     await db.ref(TEST_PATH + '/appointments').set(appts);
-    return 'test copy ready (' + raw.length + ' bytes, ' + Object.keys(appts).length + ' pickup requests)';
+    const bookings = (await db.ref('werkloods-bookings').once('value')).val() || {};
+    await db.ref(TEST_PATH + '/werkloods').set(bookings);
+    return 'test copy ready (' + raw.length + ' bytes, ' + Object.keys(appts).length + ' pickup requests, ' + Object.keys(bookings).length + ' werkloods/overig)';
   }
 
   async function cleanup(){

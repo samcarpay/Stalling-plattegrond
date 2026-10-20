@@ -2014,7 +2014,17 @@
       endDate: b.endDate || b.startDate,
       time: (b.startDate === (b.endDate || b.startDate)) ? (b.startTime || null) : null,
       endTime: b.endTime || null,
+      done: !!b.doneAt,
     }));
+  }
+
+  // Werkloods / overig appointments can be ticked off as done (doneAt), the
+  // way pickups are marked away. Done ones stay visible, greyed with a ✓.
+  function plnSetBookingDone(wlId, done){
+    if(werkloodsRef) werkloodsRef.child(wlId).update({ doneAt: done ? Date.now() : null });
+  }
+  function plnTitleHtml(it){
+    return (it.done ? '✓ ' : '') + escapeHtml(it.title);
   }
   function plnAllItems(){ return [...plnPickupItems(), ...plnBookingItems()]; }
 
@@ -2137,6 +2147,7 @@
       </div>
       <div class="modal-actions">
         ${existing ? '<button class="btn danger" id="plnDeleteBtn" style="margin-right:auto;">Verwijderen</button>' : ''}
+        ${existing ? `<button class="btn ${existing.doneAt ? 'ghost' : ''}" id="plnDoneBtn">${existing.doneAt ? '↩ Toch niet klaar' : '✓ Klaar'}</button>` : ''}
         <button class="btn ghost" id="plnCancelBtn">Annuleren</button>
         <button class="btn" id="plnSaveBtn">${existing ? 'Opslaan' : 'Toevoegen'}</button>
       </div>
@@ -2177,6 +2188,10 @@
     overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
 
     if(existing){
+      document.getElementById('plnDoneBtn').addEventListener('click', () => {
+        plnSetBookingDone(existing.id, !existing.doneAt);
+        closeModal();
+      });
       document.getElementById('plnDeleteBtn').addEventListener('click', () => {
         confirmAction('Planningsafspraak verwijderen?', 'Dit verwijdert deze boeking permanent.', () => {
           if(werkloodsRef) werkloodsRef.child(existing.id).remove();
@@ -2463,12 +2478,14 @@
             <span class="plo-status">${status}</span>
           </div>`;
         } else {
-          html += `<div class="plo-row is-${it.kind}" data-idx="${idx}">
+          html += `<div class="plo-row is-${it.kind}${it.done ? ' is-done' : ''}" data-idx="${idx}">
             <span class="plo-time">${escapeHtml(timeOf(it))}</span>
-            <span class="plo-name">${escapeHtml(it.title)}</span>
+            <span class="plo-name">${plnTitleHtml(it)}</span>
             <span class="plo-obj">${escapeHtml(it.sub || '')}</span>
             <span class="plo-place">${it.endDate !== it.startDate ? 't/m ' + escapeHtml(formatDutchDate(it.endDate)) : ''}</span>
-            <span class="plo-status"><span class="plo-pill ${it.kind}">${PLN_META[it.kind].label}</span></span>
+            <span class="plo-status">${it.done
+              ? `<span class="plo-pill done">✓ Klaar</span><button type="button" class="plo-btn ok" data-act="undone" data-idx="${idx}" title="Toch niet klaar">↩</button>`
+              : `<span class="plo-pill ${it.kind}">${PLN_META[it.kind].label}</span><button type="button" class="plo-btn" data-act="done" data-idx="${idx}">Klaar</button>`}</span>
           </div>`;
         }
       });
@@ -2529,9 +2546,10 @@
     list.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const it = rowItems[parseInt(btn.getAttribute('data-idx'), 10)];
+      const act = btn.getAttribute('data-act');
+      if(act === 'done' || act === 'undone'){ plnSetBookingDone(it.wlId, act === 'done'); return; }
       const a = apptById[it.apptId];
       if(!a) return;
-      const act = btn.getAttribute('data-act');
       if(act === 'link') openLinkAppointmentModal(a.id);
       else if(act === 'confirm') apptConfirm(a);
       else if(act === 'ready') apptToggleReady(a);
@@ -2734,7 +2752,7 @@
           <span class="pln-upcoming-bar" style="background:${PLN_META[it.kind].color}"></span>
           <div style="min-width:0;">
             <div class="pln-upcoming-when">${formatDutchDate(it.startDate).split(' ').slice(1).join(' ')}${it.endDate !== it.startDate ? ' – ' + formatDutchDate(it.endDate).split(' ').slice(1).join(' ') : ''}${it.time ? ' · ' + it.time : ''}</div>
-            <div class="pln-upcoming-title">${escapeHtml(it.title)}</div>
+            <div class="pln-upcoming-title">${plnTitleHtml(it)}</div>
           </div>
         </div>
       `).join('')}
@@ -2775,7 +2793,7 @@
           <span class="pln-upcoming-bar" style="background:${PLN_META[it.kind].color}"></span>
           <div style="min-width:0;">
             <div class="pln-upcoming-when">${it.time ? it.time : (it.endDate !== it.startDate ? 'Hele periode' : 'Hele dag')}</div>
-            <div class="pln-upcoming-title">${escapeHtml(it.title)}</div>
+            <div class="pln-upcoming-title">${plnTitleHtml(it)}</div>
           </div>
         </div>
       `).join('')}
@@ -2833,7 +2851,7 @@
       allDayRow.style.gridTemplateRows = `repeat(${lanes.length}, 22px)`;
       allDayRow.innerHTML = allDayItems.map(({ it, first, last, lane }) => `
         <div class="pln-allday-chip" data-item-uid="${escapeAttr(it.uid)}" style="grid-column:${first + 2} / ${last + 3};grid-row:${lane + 1};background:${PLN_META[it.kind].color};">
-          ${escapeHtml(it.title)}
+          ${plnTitleHtml(it)}
         </div>
       `).join('');
       main.appendChild(allDayRow);
@@ -2890,7 +2908,7 @@
         block.style.height = h + 'px';
         block.style.background = PLN_META[it.kind].soft;
         block.style.borderLeft = '3px solid ' + PLN_META[it.kind].color;
-        block.innerHTML = `<div class="pln-appt-title">${escapeHtml(it.title)}</div><div class="pln-appt-time">${it.time}${it.endTime ? ' – ' + it.endTime : ''}</div>`;
+        block.innerHTML = `<div class="pln-appt-title">${plnTitleHtml(it)}</div><div class="pln-appt-time">${it.time}${it.endTime ? ' – ' + it.endTime : ''}</div>`;
         block.addEventListener('click', () => plnClickItem(it));
         col.appendChild(block);
       });
@@ -2923,7 +2941,7 @@
           <div class="pln-day-view-time">${it.time ? it.time + (it.endTime ? ' – ' + it.endTime : '') : (it.endDate !== it.startDate ? 'Hele periode' : 'Hele dag')}</div>
           <span class="pln-day-view-bar" style="background:${PLN_META[it.kind].color}"></span>
           <div style="min-width:0;">
-            <div class="pln-day-view-name">${escapeHtml(it.title)}</div>
+            <div class="pln-day-view-name">${plnTitleHtml(it)}</div>
             <div class="pln-day-view-meta">${PLN_META[it.kind].label}${it.sub ? ' · ' + escapeHtml(it.sub) : ''}${it.endDate !== it.startDate ? ' · t/m ' + formatDutchDate(it.endDate) : ''}</div>
           </div>
         </div>
