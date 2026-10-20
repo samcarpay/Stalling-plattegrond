@@ -1028,7 +1028,34 @@
     return warehouseRows(w).find(r => r.id === rowId);
   }
 
+  // Per-device memory of where you were (not synced to other devices).
+  let uiRestored = false;
+  function uiPageKey(){
+    return showPlanning ? 'planning' : showAgenda ? 'agenda' : showKlanten ? 'klanten' : showOverview ? 'overzicht'
+      : showWinterstalling ? 'winter' : showNieuweKlanten ? 'nieuw' : 'plattegrond';
+  }
+  function saveUiState(){
+    try{
+      localStorage.setItem('ui-last', JSON.stringify({ page: uiPageKey(), kas: state.activeWarehouseId, filter: planFilter, planningView }));
+    }catch(e){}
+  }
+  function restoreUiState(){
+    let s = null;
+    try{ s = JSON.parse(localStorage.getItem('ui-last') || 'null'); }catch(e){}
+    if(!s) return;
+    const hasAppts = hasFirebaseSync && typeof APPOINTMENTS_PATH !== 'undefined' && APPOINTMENTS_PATH;
+    if(s.kas && state.warehouses.some(w => w.id === s.kas)) state.activeWarehouseId = s.kas;
+    if(['alles','vrij','ophalen','weg','winter'].includes(s.filter)) planFilter = s.filter;
+    if(['overzicht','day','week','month'].includes(s.planningView)) planningView = s.planningView;
+    if(s.page === 'planning' && hasAppts) showPlanning = true;
+    else if(s.page === 'agenda' && hasAppts) showAgenda = true;
+    else if(s.page === 'klanten') showKlanten = true;
+    else if(s.page === 'overzicht') showOverview = true;
+    else if(s.page === 'winter') showWinterstalling = true;
+  }
+
   function render(){
+    if(!uiRestored){ uiRestored = true; restoreUiState(); }
     document.getElementById('facilityName').value = state.facilityName;
     renderTabs();
     populateSearchWhFilter();
@@ -1522,7 +1549,7 @@
     card.innerHTML = `
       <div class="agenda-card-top" style="cursor:pointer;">
         <div>
-          <div class="agenda-date">${a.date ? escapeHtml(formatApptWhen(a)) : '(geen datum opgegeven)'}${info ? '<span class="agenda-badge linked">Gekoppeld</span>' : '<span class="agenda-badge needs">Nog koppelen</span>'}</div>
+          <div class="agenda-date">${a.date ? escapeHtml(formatApptWhen(a)) : '(geen datum opgegeven)'}${info ? '<span class="agenda-badge linked">Gekoppeld</span>' : '<span class="agenda-badge needs">Nog koppelen</span>'}${apptNeedsConfirm(a) ? '<span class="agenda-badge confirm">Nog bevestigen</span>' : ''}${a.readyAt ? '<span class="agenda-badge ready">Klaar</span>' : ''}</div>
           <div class="agenda-name">${escapeHtml(a.name || 'Naam onbekend')}</div>
           <div class="agenda-sub">${escapeHtml(compactSub)}${away ? ' · <strong style="color:var(--ink);">momenteel weg</strong>' : ''}</div>
         </div>
@@ -1591,6 +1618,14 @@
       linkBtn.textContent = suggestion ? 'Toch zoeken' : 'Koppel aan plek';
       linkBtn.addEventListener('click', (e) => { e.stopPropagation(); openLinkAppointmentModal(a.id); });
       actionsEl.appendChild(linkBtn);
+    }
+    if(a.source !== 'manual'){
+      const confBtn = document.createElement('button');
+      confBtn.className = 'btn small' + (a.confirmedAt ? ' ghost' : '');
+      confBtn.textContent = a.confirmedAt ? '✓ Bevestigd' : 'Bevestigen';
+      confBtn.disabled = !!a.confirmedAt;
+      confBtn.addEventListener('click', (e) => { e.stopPropagation(); apptConfirm(a); });
+      actionsEl.appendChild(confBtn);
     }
     const doneBtn = document.createElement('button');
     doneBtn.className = 'btn ghost small';
@@ -2011,6 +2046,10 @@
       ${a.contact ? `<div class="field"><label>Contact</label><div style="font-size:13px;color:var(--ink);">${escapeHtml(a.contact)}</div></div>` : ''}
       ${a.notes ? `<div class="field"><label>Notities</label><div style="font-size:13px;color:var(--ink);">${escapeHtml(a.notes)}</div></div>` : ''}
       <div class="agenda-link" style="margin-top:2px;">${locationLine}</div>
+      <div class="appt-status-row">
+        ${a.source !== 'manual' ? (a.confirmedAt ? '<span class="appt-st ok">✓ Bevestigd</span>' : '<button class="btn small" id="plnConfirmBtn">Bevestigen</button>') : ''}
+        <button class="btn small ${a.readyAt ? '' : 'ghost'}" id="plnReadyBtn">${a.readyAt ? '✓ Klaar (tik om terug te zetten)' : 'Klaarzetten'}</button>
+      </div>
       <div class="modal-actions">
         <button class="btn ghost" id="plnPickupCloseBtn">Sluiten</button>
         <button class="btn ghost" id="plnPickupAgendaBtn">Open in Agenda</button>
@@ -2020,6 +2059,9 @@
     overlay.classList.add('show');
     document.getElementById('plnPickupCloseBtn').addEventListener('click', closeModal);
     overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
+    const plnConfirmBtn = document.getElementById('plnConfirmBtn');
+    if(plnConfirmBtn) plnConfirmBtn.addEventListener('click', () => { closeModal(); apptConfirm(a); });
+    document.getElementById('plnReadyBtn').addEventListener('click', () => { closeModal(); apptToggleReady(a); });
     document.getElementById('plnPickupAgendaBtn').addEventListener('click', () => {
       closeModal();
       showAgenda = true;
@@ -2245,6 +2287,7 @@
     toolbar.querySelectorAll('[data-view]').forEach(btn => {
       btn.addEventListener('click', () => {
         planningView = btn.getAttribute('data-view');
+        saveUiState();
         renderPlanningPage();
       });
     });
@@ -2284,6 +2327,19 @@
     const firstThu = new Date(t.getFullYear(), 0, 4);
     return 1 + Math.round(((t - firstThu) / 86400000 - 3 + ((firstThu.getDay() + 6) % 7)) / 7);
   }
+
+  // Website bookings start as a request; 'Bevestigen' records that the day
+  // and time were agreed with the customer. Pickups you add yourself count
+  // as confirmed. 'Klaar' records that the vehicle has been put ready.
+  function apptNeedsConfirm(a){ return !!a && a.source !== 'manual' && !a.confirmedAt; }
+  function setApptStatus(a, fields){
+    if(!a || !appointmentsRef) return;
+    Object.assign(a, fields);           // show it straight away; the sync brings the same values back
+    appointmentsRef.child(a.id).update(fields);
+    render();
+  }
+  function apptConfirm(a){ setApptStatus(a, { confirmedAt: Date.now() }); }
+  function apptToggleReady(a){ setApptStatus(a, { readyAt: a.readyAt ? null : Date.now() }); }
 
   function plnPickupDetail(a){
     const info = findLinkedInfo(a.linked);
@@ -2337,7 +2393,11 @@
     head.className = 'plo-head';
     head.innerHTML = `
       <div class="plo-h1">${weekPickups} keer ophalen</div>
-      <div class="plo-sub">${weekOther ? `plus ${weekOther} werkloods/overig · ` : ''}${days.includes(todayIso) ? 'deze week' : (monday > plnParseIso(todayIso) ? 'komende week' : 'eerdere week')}</div>
+      <div class="plo-sub">${(() => {
+        const wk = appointments.filter(a => a.status !== 'done' && days.includes(a.date));
+        const nc = wk.filter(apptNeedsConfirm).length, nr = wk.filter(a => a.readyAt).length;
+        return (nc ? `<strong class="plo-warn">${nc} nog bevestigen</strong> · ` : '') + (nr ? `${nr} klaargezet · ` : '');
+      })()}${weekOther ? `plus ${weekOther} werkloods/overig · ` : ''}${days.includes(todayIso) ? 'deze week' : (monday > plnParseIso(todayIso) ? 'komende week' : 'eerdere week')}</div>
     `;
     root.appendChild(head);
 
@@ -2386,7 +2446,13 @@
           let status;
           if(!det.info) status = `<button type="button" class="plo-btn warn" data-act="link" data-idx="${idx}">Koppel aan plek</button>`;
           else if(det.away) status = `<span class="plo-pill away">Weg</span><button type="button" class="plo-btn ok" data-act="away" data-idx="${idx}">↩ Terug</button>`;
-          else status = `<button type="button" class="plo-btn${iso > todayIso ? ' later' : ''}" data-act="away" data-idx="${idx}">Opgehaald</button>`;
+          else {
+            const later = iso > todayIso ? ' later' : '';
+            status = '';
+            if(apptNeedsConfirm(a)) status += `<button type="button" class="plo-btn dark" data-act="confirm" data-idx="${idx}">Bevestigen</button>`;
+            if(a.readyAt) status += `<button type="button" class="plo-pill ready" data-act="ready" data-idx="${idx}" title="Tik om 'klaar' weg te halen">● Klaar</button><button type="button" class="plo-btn${later}" data-act="away" data-idx="${idx}">Opgehaald</button>`;
+            else if(!apptNeedsConfirm(a)) status += `<button type="button" class="plo-btn amber${later}" data-act="ready" data-idx="${idx}">Klaarzetten</button><button type="button" class="plo-btn${later}" data-act="away" data-idx="${idx}">Opgehaald</button>`;
+          }
           html += `<div class="plo-row${det.away ? ' is-away' : ''}" data-idx="${idx}">
             <span class="plo-time">${escapeHtml(timeOf(it))}</span>
             <span class="plo-name">${escapeHtml((a && a.name) || 'Naam onbekend')}</span>
@@ -2424,8 +2490,12 @@
     prepCard.className = 'plo-card';
     prepCard.innerHTML = `<h3 class="plo-card-h">Klaarzetten</h3><div class="plo-card-sub">Vandaag en morgen, per loods</div>` +
       (prep.length ? Object.keys(prepByWh).map(wh => `<div class="plo-card-group">${escapeHtml(wh)}</div>` +
-        prepByWh[wh].map(x => `<div class="plo-line"><span><strong>${escapeHtml(x.det.tag)}</strong> ${escapeHtml(x.a.name || '')}</span><span class="${x.a.date === todayIso ? 'plo-today' : 'plo-muted'}">${x.a.date === todayIso ? 'vandaag' : 'morgen'}${x.a.time ? ' ' + escapeHtml(x.a.time) : ''}</span></div>`).join('')
+        prepByWh[wh].map(x => `<div class="plo-line${x.a.readyAt ? ' is-ready' : ''}"><span><strong>${escapeHtml(x.det.tag)}</strong> ${escapeHtml(x.a.name || '')}<span class="${x.a.date === todayIso ? 'plo-today' : 'plo-muted'} plo-block">${x.a.date === todayIso ? 'vandaag' : 'morgen'}${x.a.time ? ' ' + escapeHtml(x.a.time) : ''}</span></span><button type="button" class="plo-check${x.a.readyAt ? ' on' : ''}" data-prep-id="${escapeAttr(x.a.id)}" aria-label="${x.a.readyAt ? 'Klaar — tik om terug te zetten' : 'Markeer als klaar'}">${x.a.readyAt ? '✓ Klaar' : 'Klaar?'}</button></div>`).join('')
       ).join('') : `<div class="plo-empty">Niets klaar te zetten.</div>`);
+    prepCard.querySelectorAll('[data-prep-id]').forEach(b => b.addEventListener('click', () => {
+      const a = appointments.find(x => x.id === b.getAttribute('data-prep-id'));
+      if(a) apptToggleReady(a);
+    }));
     aside.appendChild(prepCard);
 
     // Momenteel weg
@@ -2459,7 +2529,10 @@
       const it = rowItems[parseInt(btn.getAttribute('data-idx'), 10)];
       const a = apptById[it.apptId];
       if(!a) return;
-      if(btn.getAttribute('data-act') === 'link') openLinkAppointmentModal(a.id);
+      const act = btn.getAttribute('data-act');
+      if(act === 'link') openLinkAppointmentModal(a.id);
+      else if(act === 'confirm') apptConfirm(a);
+      else if(act === 'ready') apptToggleReady(a);
       else plnMarkAway(a);
     }));
     list.querySelectorAll('.plo-row[data-idx]').forEach(row => row.addEventListener('click', () => plnClickItem(rowItems[parseInt(row.getAttribute('data-idx'), 10)])));
@@ -4182,6 +4255,172 @@
   }
 
   function renderTabs(){
+    renderTabsInner();
+    renderBottomNav();
+    if(uiRestored) saveUiState();
+  }
+
+  // ---------- phone: bottom navigation + 'Meer' sheet ----------
+  // Reuses the existing tabs (still in the page, hidden on a phone) so all
+  // the switching logic stays in one place.
+  const NAV_ICONS = {
+    plattegrond: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18M9 4v5M15 4v5M9 15v5M15 15v5"/></svg>',
+    planning: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M7 14h4M7 17h7"/></svg>',
+    agenda: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>',
+    klanten: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><path d="M17 4a4 4 0 0 1 0 8M22 21c0-3-2-5-4-6"/></svg>',
+    meer: '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
+  };
+  function findTopTab(text){
+    return Array.from(document.querySelectorAll('#whTabs .wh-tab')).find(t => (t.querySelector('.wh-tab-name-text')?.textContent || '').includes(text));
+  }
+  function renderBottomNav(){
+    let nav = document.getElementById('bottomNav');
+    if(!nav){
+      nav = document.createElement('nav');
+      nav.id = 'bottomNav';
+      nav.setAttribute('aria-label', 'Hoofdmenu');
+      document.body.appendChild(nav);
+      document.body.classList.add('has-bottom-nav');
+    }
+    const items = [{ key:'plattegrond', label:'Plattegrond' }];
+    if(findTopTab('Planning')) items.push({ key:'planning', label:'Planning' });
+    const agendaTab = findTopTab('Agenda');
+    if(agendaTab) items.push({ key:'agenda', label:'Agenda', badge: (agendaTab.querySelector('.wh-count')?.textContent || '').match(/^\d+/)?.[0] });
+    items.push({ key:'klanten', label:'Klanten' }, { key:'meer', label:'Meer' });
+    const anyPage = showAgenda || showPlanning || showKlanten || showOverview || showWinterstalling || showNieuweKlanten;
+    const activeKey = showPlanning ? 'planning' : showAgenda ? 'agenda' : showKlanten ? 'klanten' : anyPage ? 'meer' : 'plattegrond';
+    nav.innerHTML = items.map(it => `<button type="button" class="bn-item${it.key === activeKey ? ' on' : ''}" data-nav="${it.key}">${NAV_ICONS[it.key]}<span>${it.label}</span>${it.badge ? `<b>${escapeHtml(it.badge)}</b>` : ''}</button>`).join('');
+    nav.querySelectorAll('[data-nav]').forEach(btn => btn.addEventListener('click', () => {
+      const k = btn.getAttribute('data-nav');
+      if(k === 'plattegrond'){
+        const tabs = document.querySelectorAll('#whTabsWarehouses .wh-tab');
+        const idx = Math.max(0, state.warehouses.findIndex(w => w.id === state.activeWarehouseId));
+        if(tabs[idx]) tabs[idx].click();
+      } else if(k === 'meer'){
+        openMoreSheet();
+        return;
+      } else {
+        const t = findTopTab(k === 'planning' ? 'Planning' : k === 'agenda' ? 'Agenda' : 'Klanten');
+        if(t) t.click();
+      }
+      window.scrollTo(0, 0);
+    }));
+  }
+
+  function openMoreSheet(){
+    const navTexts = ['Agenda', 'Planning', 'Klanten'];
+    const pages = Array.from(document.querySelectorAll('#whTabs .wh-tab')).filter(t => !navTexts.some(n => (t.textContent || '').includes(n)));
+    const tools = Array.from(document.querySelectorAll('.titleblock .toolbar-actions button')).filter(b => b.style.display !== 'none');
+    const html = `
+      <div class="ms-title">Meer</div>
+      <div class="ms-group">${pages.map((t, i) => `<button type="button" class="ms-item" data-ms-page="${i}">${escapeHtml(t.querySelector('.wh-tab-name-text')?.textContent || t.textContent)}${t.querySelector('.wh-count') ? `<span>${escapeHtml(t.querySelector('.wh-count').textContent)}</span>` : ''}</button>`).join('')}</div>
+      <div class="ms-group">${tools.map((b, i) => `<button type="button" class="ms-item" data-ms-tool="${i}">${escapeHtml(b.textContent.trim())}</button>`).join('')}</div>`;
+    openMobileSheet(html, (sheet) => {
+      sheet.querySelectorAll('[data-ms-page]').forEach(b => b.addEventListener('click', () => { closeMobileSheet(); pages[+b.getAttribute('data-ms-page')].click(); window.scrollTo(0, 0); }));
+      sheet.querySelectorAll('[data-ms-tool]').forEach(b => b.addEventListener('click', () => { closeMobileSheet(); tools[+b.getAttribute('data-ms-tool')].click(); }));
+    });
+  }
+
+  // ---------- generic bottom sheet (phone) ----------
+  function openMobileSheet(html, bind){
+    let back = document.getElementById('mSheetBack');
+    if(!back){
+      back = document.createElement('div');
+      back.id = 'mSheetBack';
+      back.innerHTML = '<div id="mSheet" role="dialog" aria-modal="true"></div>';
+      document.body.appendChild(back);
+      back.addEventListener('click', (e) => { if(e.target === back) closeMobileSheet(); });
+      document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeMobileSheet(); });
+    }
+    const sheet = back.querySelector('#mSheet');
+    sheet.innerHTML = '<button type="button" class="ms-handle" aria-label="Sluiten"></button>' + html;
+    sheet.querySelector('.ms-handle').addEventListener('click', closeMobileSheet);
+    if(bind) bind(sheet);
+    back.classList.add('show');
+    document.body.classList.add('ms-open');
+  }
+  function closeMobileSheet(){
+    const back = document.getElementById('mSheetBack');
+    if(back) back.classList.remove('show');
+    document.body.classList.remove('ms-open');
+  }
+  function isPhoneLayout(){
+    return window.matchMedia && window.matchMedia('(max-width:700px)').matches;
+  }
+
+  // ---------- 4. tapping a bay on a phone: quick sheet ----------
+  function waLink(phone){
+    let d = (phone || '').replace(/[^\d+]/g, '');
+    if(!d) return '';
+    if(d.startsWith('+')) d = d.slice(1);
+    else if(d.startsWith('00')) d = d.slice(2);
+    else if(d.startsWith('0')) d = '31' + d.slice(1);
+    return 'https://wa.me/' + d;
+  }
+  function openSpotSheet(row, spot, sideName, rowIdx, sIdx, tagPrefix){
+    const w = activeWarehouse();
+    const tag = displayTag(spot, tagPrefix);
+    const t = TYPES[spot.type] || { color:'#7A7A7A', label:'Onbekend' };
+    let sideKey = null, sideRows = null;
+    ['left', 'right'].forEach(k => { if((w[k] || []).some(r => r.spots.includes(spot))){ sideKey = k; sideRows = w[k]; } });
+    const rIdx = sideRows ? sideRows.findIndex(r => r.spots.includes(spot)) : -1;
+    const pos = rIdx >= 0 ? sideRows[rIdx].spots.indexOf(spot) : -1;
+    const nb = (ri) => (sideRows && sideRows[ri] && sideRows[ri].spots[pos]) || null;
+    const neighbour = (s, word) => {
+      if(!s || s.removed) return '';
+      const nm = s.isDoor ? 'deur' : (s.occupants && s.occupants.length ? s.occupants.map(o => o.name || 'onbekend').join(', ') + (s.occupants.some(o => o.away) ? ' (weg)' : '') : 'leeg');
+      return `<div class="ss-line"><span>${word}</span><strong>${escapeHtml(displayTag(s, tagPrefix))} · ${escapeHtml(nm)}</strong></div>`;
+    };
+    const rowName = w.layout === 'single' ? `rij ${rIdx + 1}` : `${(sideName || '').toLowerCase()}, rij ${rIdx + 1}`;
+    const appts = (typeof appointments !== 'undefined' ? appointments : []).filter(a => a.status !== 'done' && a.linked && a.linked.spotId === spot.id).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const multi = spot.occupants.length > 1;
+    const occHtml = spot.occupants.map((o, i) => {
+      const wa = waLink(o.phone);
+      return `<div class="ss-occ">
+        <div class="ss-name">${escapeHtml(o.name || 'Naam onbekend')}${o.away ? ' <em>weg</em>' : ''}</div>
+        <div class="ss-meta">${escapeHtml([t.label, o.objectNummer ? 'object ' + o.objectNummer : '', o.reg, o.since ? 'sinds ' + o.since : ''].filter(Boolean).join(' · '))}</div>
+        ${o.notes ? `<div class="ss-note">${escapeHtml(o.notes)}</div>` : ''}
+        <div class="ss-acts">
+          <button type="button" class="ss-btn ${o.away ? 'ok' : 'dark'}" data-ss-away="${i}">${o.away ? '↩ Terug' : 'Opgehaald'}</button>
+          <button type="button" class="ss-btn" data-ss-move="${i}">Verplaats</button>
+          ${o.phone ? `<a class="ss-btn" href="tel:${escapeAttr(o.phone.replace(/\s/g, ''))}">Bel</a>` : ''}
+          ${wa ? `<a class="ss-btn wa" href="${escapeAttr(wa)}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
+        </div></div>`;
+    }).join('');
+    const html = `
+      <div class="ss-head" style="--c:${t.color}"><span>${escapeHtml(tag)} · ${escapeHtml(w.name)} · ${escapeHtml(rowName)}</span></div>
+      ${occHtml}
+      ${appts.length ? `<div class="ss-appt"><span>Ophalen ${escapeHtml(formatApptWhen(appts[0]))}${apptNeedsConfirm(appts[0]) ? '<em>nog bevestigen</em>' : ''}</span><span class="ss-appt-acts">${apptNeedsConfirm(appts[0]) ? '<button type="button" class="ss-mini" data-ss-confirm>Bevestigen</button>' : ''}<button type="button" class="ss-mini${appts[0].readyAt ? ' on' : ''}" data-ss-ready>${appts[0].readyAt ? '✓ Klaar' : 'Klaarzetten'}</button></span></div>` : ''}
+      <div class="ss-lines">${neighbour(nb(rIdx + 1), 'Achter deze plek')}${neighbour(nb(rIdx - 1), 'Voor deze plek')}</div>
+      <button type="button" class="ss-btn wide" data-ss-edit>Bewerk plek${multi ? ' en voertuigen' : ''}</button>`;
+    openMobileSheet(html, (sheet) => {
+      sheet.querySelectorAll('[data-ss-away]').forEach(b => b.addEventListener('click', () => {
+        const o = spot.occupants[+b.getAttribute('data-ss-away')];
+        closeMobileSheet();
+        if(o.away){
+          const appt = appts.find(a => findMatchingOccupant(spot, a) === o) || (spot.occupants.length === 1 ? appts[0] : null);
+          openReturnConfirmModal({ warehouse: w, spot, side: sideKey || 'left' }, o, appt);
+        } else {
+          o.away = true;
+          render(); save();
+        }
+      }));
+      const ssConfirm = sheet.querySelector('[data-ss-confirm]');
+      if(ssConfirm) ssConfirm.addEventListener('click', () => { closeMobileSheet(); apptConfirm(appts[0]); });
+      const ssReady = sheet.querySelector('[data-ss-ready]');
+      if(ssReady) ssReady.addEventListener('click', () => { closeMobileSheet(); apptToggleReady(appts[0]); });
+      sheet.querySelectorAll('[data-ss-move]').forEach(b => b.addEventListener('click', () => {
+        closeMobileSheet();
+        openMoveOneOccupantSearchModal(spot, +b.getAttribute('data-ss-move'));
+      }));
+      sheet.querySelector('[data-ss-edit]').addEventListener('click', () => {
+        closeMobileSheet();
+        openSpotModal(row, spot, sideName, rowIdx, sIdx, tagPrefix);
+      });
+    });
+  }
+
+  function renderTabsInner(){
     const el = document.getElementById('whTabs');
     el.innerHTML = '';
 
@@ -4504,12 +4743,14 @@
     const spots = allSpotsGlobal();
     const occ = spots.filter(s => s.occupants && s.occupants.length > 0).length;
     document.getElementById('globalStatLine').textContent =
-      `All ${state.warehouses.length} warehouses: ${occ}/${spots.length} bays occupied`;
+      `Alle ${state.warehouses.length} locaties: ${occ}/${spots.length} plekken bezet`;
   }
 
   function renderPurpose(){
     const w = activeWarehouse();
     const el = document.getElementById('whPurpose');
+    if(el) el.innerHTML = '';
+    return;
     if(!w || !w.purpose){ el.innerHTML = ''; return; }
     el.innerHTML = `<b>${escapeHtml(w.name)}</b> — ${escapeHtml(w.purpose)}`;
   }
@@ -4521,6 +4762,14 @@
     const free = total - occupied;
     const el = document.getElementById('stats');
     el.innerHTML = '';
+    let mini = document.getElementById('miniStat');
+    if(!mini){
+      mini = document.createElement('div');
+      mini.id = 'miniStat';
+      const name = document.getElementById('facilityName');
+      if(name && name.parentNode) name.parentNode.insertBefore(mini, name.nextSibling);
+    }
+    mini.textContent = `${occupied}/${total} bezet${free ? ` · ${free} vrij` : ''}`;
     [['Plekken', total], ['In gebruik', occupied], ['Vrij', free]].forEach(([l,n]) => {
       const d = document.createElement('div');
       d.className = 'stat';
@@ -4531,6 +4780,8 @@
 
   function renderLegend(){
     const el = document.getElementById('legend');
+    el.innerHTML = ''; // legend removed: the colours speak for themselves
+    return;
     const showBadgeLegend = state.warehouses.length > 1;
     el.innerHTML = Object.entries(TYPES).map(([key,t]) =>
       `<div class="legend-item"><span class="swatch" style="background:${t.color}"></span>${t.label}</div>`
@@ -4547,6 +4798,81 @@
   }
 
   let lastPlanWarehouseId = null; // tracks which warehouse the current scroll position belongs to
+
+  // ---------- plan view: filters + 'Hele kas' / 'Groot' ----------
+  // UI-only (not synced): the filter resets per session, the Hele kas/Groot
+  // choice is remembered per device.
+  let planFilter = 'alles';          // 'alles' | 'vrij' | 'ophalen' | 'weg' | 'winter'
+  let planCompact = false;           // true = 'Hele kas' (everything fits the screen)
+  try{ planCompact = localStorage.getItem('plan-view-compact') === '1'; }catch(e){}
+  let planCompactWidth = 0;          // tile width used while rendering in 'Hele kas'
+  let planPickupMap = {};            // spotId -> short day name of a pickup this week
+
+  function buildPlanPickupMap(){
+    const map = {};
+    if(typeof appointments === 'undefined' || typeof plnMonday !== 'function') return map;
+    const monday = plnMonday(new Date());
+    const from = plnIso(monday), to = plnIso(plnAddDays(monday, 6));
+    appointments.forEach(a => {
+      if(a.status === 'done' || !a.linked || !a.date || a.date < from || a.date > to) return;
+      const d = plnParseIso(a.date);
+      const day = DUTCH_DAY_NAMES[d.getDay()].slice(0, 2).toLowerCase();
+      if(!map[a.linked.spotId] || a.date < map[a.linked.spotId].date) map[a.linked.spotId] = { day, date: a.date };
+    });
+    return map;
+  }
+
+  function spotFilterFlags(spot){
+    const occ = spot.occupants || [];
+    const wk = spot.winterKlant;
+    return {
+      vrij: occ.length === 0,
+      weg: occ.some(o => o.away),
+      ophalen: !!planPickupMap[spot.id] && !occ.some(o => o.away),
+      winter: !!(wk && (wk.name || wk.objectNummer)) || (occ.length > 0 && !!findOccupantElsewhere(spot)),
+    };
+  }
+
+  function renderPlanTools(w, wrap){
+    const counts = { vrij:0, ophalen:0, weg:0, winter:0 };
+    warehouseRows(w).forEach(r => r.spots.forEach(s => {
+      if(s.removed || s.isDoor) return;
+      const f = spotFilterFlags(s);
+      Object.keys(counts).forEach(k => { if(f[k]) counts[k]++; });
+    }));
+    const chip = (key, label) => `<button type="button" class="plan-chip${planFilter===key?' on':''}" data-plan-filter="${key}">${label}${key!=='alles' ? ` <span>${counts[key]}</span>` : ''}</button>`;
+    const bar = document.createElement('div');
+    bar.className = 'plan-tools';
+    bar.innerHTML = `
+      <div class="plan-chips">
+        ${chip('alles','Alles')}${chip('ophalen','Ophalen deze week')}${chip('weg','Weg')}${chip('vrij','Vrij')}${chip('winter','Winterklant')}
+      </div>
+      <div class="plan-size" role="group" aria-label="Weergave">
+        <button type="button" class="${planCompact?'on':''}" data-plan-size="heel">Hele kas</button>
+        <button type="button" class="${planCompact?'':'on'}" data-plan-size="groot">Groot</button>
+      </div>`;
+    bar.querySelectorAll('[data-plan-filter]').forEach(b => b.addEventListener('click', () => {
+      const k = b.getAttribute('data-plan-filter');
+      planFilter = (planFilter === k && k !== 'alles') ? 'alles' : k;
+      saveUiState();
+      renderPlan();
+    }));
+    bar.querySelectorAll('[data-plan-size]').forEach(b => b.addEventListener('click', () => {
+      planCompact = b.getAttribute('data-plan-size') === 'heel';
+      try{ localStorage.setItem('plan-view-compact', planCompact ? '1' : '0'); }catch(e){}
+      renderPlan();
+    }));
+    wrap.appendChild(bar);
+  }
+
+  let planResizeTimer = null;
+  window.addEventListener('resize', () => {
+    if(!planCompact) return;
+    clearTimeout(planResizeTimer);
+    planResizeTimer = setTimeout(() => {
+      if(document.querySelector('#plan .plan.compact')) renderPlan();
+    }, 150);
+  });
 
   function renderPlan(){
     const wrap = document.getElementById('plan');
@@ -4565,11 +4891,24 @@
     if(!w) return;
     const hasAisle = w.layout !== 'single';
 
+    planPickupMap = buildPlanPickupMap();
+    renderPlanTools(w, wrap);
+
     const scroller = document.createElement('div');
     scroller.className = 'plan-scroll';
 
     const plan = document.createElement('div');
-    plan.className = 'plan';
+    plan.className = 'plan' + (planCompact ? ' compact' : '') + (planFilter !== 'alles' ? ' filtering' : '');
+    planCompactWidth = 0;
+    if(planCompact){
+      const maxSpots = Math.max(1, ...warehouseRows(w).map(r => r.spots.length));
+      const avail = (wrap.clientWidth || document.documentElement.clientWidth) - 22;
+      const gap = maxSpots > 12 && avail < 600 ? 2 : 4;
+      plan.style.setProperty('--lane-gap', gap + 'px');
+      planCompactWidth = Math.max(12, Math.floor((avail - (maxSpots - 1) * gap) / maxSpots));
+      if(planCompactWidth < 40) plan.classList.add('tiny');
+      if(planCompactWidth < 26) plan.classList.add('micro');
+    }
 
     if(hasAisle){
       const rightInfo = sideLabelInfo(w, 'right');
@@ -4624,7 +4963,7 @@
     }
     const activeCount = row.spots.filter(s => !s.removed).length;
     const removedCount = row.spots.length - activeCount;
-    const countLabel = `${activeCount} bay${activeCount===1?'':'s'}` + (removedCount ? ` · ${removedCount} removed` : '');
+    const countLabel = `${activeCount} plek${activeCount===1?'':'ken'}` + (removedCount ? ` · ${removedCount} zonder plek` : '');
     head.innerHTML = `
       <span class="row-tag">${row.name ? escapeHtml(row.name) : rowLabel(sideName, idx, hasAisle)}</span>
       <span style="font-size:10.5px;color:var(--ink-faint);font-family:var(--font-display)">${countLabel}</span>
@@ -4771,8 +5110,14 @@
   }
 
   function renderSpot(row, spot, sideName, rowIdx, sIdx, tagPrefix){
+    const el = renderSpotTile(row, spot, sideName, rowIdx, sIdx, tagPrefix);
+    if(planFilter !== 'alles' && !spot.removed && !spot.isDoor && spotFilterFlags(spot)[planFilter]) el.classList.add('f-hit');
+    return el;
+  }
+
+  function renderSpotTile(row, spot, sideName, rowIdx, sIdx, tagPrefix){
     const el = document.createElement('div');
-    const w = widthFor(spot.length);
+    const w = planCompactWidth || widthFor(spot.length);
     el.style.width = w + 'px';
     el.setAttribute('data-spot-id', spot.id);
     const tag = displayTag(spot, tagPrefix);
@@ -4785,10 +5130,24 @@
         <span class="spot-id" style="align-self:flex-start">${escapeHtml(tag)}</span>
         <span class="gap-label">verwijderd<br/>tik om te hergebruiken</span>
       `;
+      el.title = 'Geen plek — tik om hier weer een plek te maken';
       el.addEventListener('click', (e) => {
         if(e.target.closest('[data-hard-remove]')) return;
-        spot.removed = false;
-        render(); save();
+        const overlay = document.getElementById('overlay');
+        const body = document.getElementById('modalBody');
+        body.className = 'modal';
+        body.innerHTML = `
+          <h3>Geen plek (${escapeHtml(tag)})</h3>
+          <div class="sub">Op deze plaats staat nu geen plek. Wil je hier weer een plek maken?</div>
+          <div class="modal-actions" style="flex-wrap:wrap;">
+            <button class="btn ghost" data-hard-remove="${spot.id}" id="gapHardBtn">Helemaal verwijderen</button>
+            <button class="btn ghost" id="gapCancelBtn">Annuleren</button>
+            <button class="btn" id="gapReuseBtn">Plek maken</button>
+          </div>`;
+        overlay.classList.add('show');
+        document.getElementById('gapCancelBtn').addEventListener('click', closeModal);
+        overlay.addEventListener('click', (ev) => { if(ev.target === overlay) closeModal(); }, { once:true });
+        document.getElementById('gapReuseBtn').addEventListener('click', () => { closeModal(); spot.removed = false; render(); save(); });
       });
       return el;
     }
@@ -4799,7 +5158,7 @@
       el.innerHTML = `
         <div class="spot-del" data-remove-spot="${spot.id}" title="Plek verwijderen">✕</div>
         <span class="spot-id" style="align-self:flex-start">${escapeHtml(tag)}</span>
-        <span class="door-label">${doorIconSvg(20)}<br/>${escapeHtml(spot.label && spot.label.trim() ? spot.label.trim() : 'door')}</span>
+        <span class="door-label">${doorIconSvg(20)}<br/>${escapeHtml(spot.label && spot.label.trim() ? spot.label.trim() : 'deur')}</span>
       `;
       el.addEventListener('click', (e) => {
         if(e.target.closest('[data-remove-spot]')) return;
@@ -4833,6 +5192,7 @@
         ${longStay ? `<div class="long-stay-badge" title="Langer dan een jaar gestald">⏱</div>` : ''}
         ${notesTexts.length ? `<div class="note-badge${longStay ? ' shifted' : ''}" title="${escapeAttr(notesTexts.join(' · '))}">!</div>` : ''}
         ${anyAway ? `<div class="away-badge" title="Momenteel weg — tijdelijk opgehaald">WEG</div>` : ''}
+        ${!anyAway && planPickupMap[spot.id] ? `<div class="pickup-badge" title="Ophalen deze week">${escapeHtml(planPickupMap[spot.id].day)}</div>` : ''}
         ${elsewhere ? `<div class="winter-badge" title="Heeft ook een plek in ${escapeAttr(elsewhere.warehouse.name)}, plek ${escapeAttr(elsewhere.tag)}">❄️</div>` : ''}
         <div class="spot-id">${escapeHtml(tag)}</div>
         <div>
@@ -4854,7 +5214,8 @@
     el.addEventListener('click', (e) => {
       if(e.target.closest('[data-clear]') || e.target.closest('[data-remove-spot]')) return;
       if(dragJustHappened){ dragJustHappened = false; return; }
-      openSpotModal(row, spot, sideName, rowIdx, sIdx, tagPrefix);
+      if(isPhoneLayout() && spot.occupants && spot.occupants.length > 0) openSpotSheet(row, spot, sideName, rowIdx, sIdx, tagPrefix);
+      else openSpotModal(row, spot, sideName, rowIdx, sIdx, tagPrefix);
     });
     attachDragToSwap(el, spot.id);
     return el;
@@ -5184,12 +5545,15 @@
         </div>
       </div>
       <div class="modal-actions">
-        ${isEditing ? '<button class="btn danger" id="clearBtn">Plek leegmaken</button>' : ''}
+        ${isEditing ? '<button class="btn danger" id="clearBtn">Plek leegmaken</button>' : `<button class="btn ghost" id="noSpotBtn" data-remove-spot="${spot.id}">Geen plek hier</button>`}
         <button class="btn ghost" id="cancelBtn">Annuleren</button>
         <button class="btn" id="saveBtn">Opslaan</button>
       </div>
       <div id="spotSaveError" style="display:none;color:var(--car);font-size:12px;margin-top:10px;"></div>
     `;
+
+    const noSpotBtn = document.getElementById('noSpotBtn');
+    if(noSpotBtn) noSpotBtn.addEventListener('click', () => closeModal());
 
     function renderOccList(){
       const listEl = document.getElementById('occList');
