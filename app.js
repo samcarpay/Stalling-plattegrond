@@ -411,6 +411,7 @@
       appointmentsRef.on('value', (snapshot) => {
         const val = snapshot.val() || {};
         appointments = Object.keys(val).map(k => ({ id: k, ...val[k] }));
+        scheduleHealAppointmentLinks();
         renderTabs();
         if(showAgenda) renderAgendaPage();
         if(showPlanning) renderPlanningPage();
@@ -688,6 +689,7 @@
           syncToCloud().then((ok) => setStatus(ok ? 'gesynchroniseerd tussen apparaten' : 'lokaal opgeslagen — sync mislukt (offline?)'));
         }
         maybeAutoBackup();
+        scheduleHealAppointmentLinks();
       }catch(e){
         setStatus('opslaan mislukt — wijzigingen alleen bewaard in deze sessie');
       }
@@ -3609,6 +3611,42 @@
       if(sameObj || sameName){
         appointmentsRef.child(a.id).update({ linked: { warehouseId: toLoc.warehouse.id, spotId: toLoc.spot.id } });
       }
+    });
+  }
+
+  // A pickup request is linked to a BAY, not to the customer. When the
+  // customer has moved some other way (dragging bays, returned to another
+  // bay, editing bays by hand), the request would keep pointing at the old
+  // bay — so after every change: if a request's bay no longer holds that
+  // customer, find them by object number (or, without one, by exact name)
+  // and move the link along. Only when there is exactly one match.
+  let healLinksTimer = null;
+  function scheduleHealAppointmentLinks(){
+    clearTimeout(healLinksTimer);
+    healLinksTimer = setTimeout(healAppointmentLinks, 1500);
+  }
+  function healAppointmentLinks(){
+    if(!appointmentsRef || !state || !Array.isArray(state.warehouses)) return;
+    const open = appointments.filter(a => a.status !== 'done' && a.linked);
+    if(open.length === 0) return;
+    const belongs = (o, objNum, name) =>
+      (objNum && normObjNum(o.objectNummer) === objNum) || (!objNum && name && (o.name || '').trim().toLowerCase() === name);
+    open.forEach(a => {
+      const objNum = normObjNum(a.vehicleDesc);
+      const name = (a.name || '').trim().toLowerCase();
+      if(!objNum && !name) return;
+      const info = findLinkedInfo(a.linked);
+      if(info && (info.spot.occupants || []).some(o => belongs(o, objNum, name))) return; // still right
+      const found = [];
+      state.warehouses.forEach(w => ['left', 'right'].forEach(side => (w[side] || []).forEach(row => row.spots.forEach(sp => {
+        if(sp.removed || sp.isDoor) return;
+        if((sp.occupants || []).some(o => belongs(o, objNum, name))) found.push({ warehouse: w, spot: sp });
+      }))));
+      if(found.length !== 1) return; // not found (e.g. parked) or ambiguous: leave it
+      const to = found[0];
+      if(a.linked.spotId === to.spot.id && a.linked.warehouseId === to.warehouse.id) return;
+      a.linked = { warehouseId: to.warehouse.id, spotId: to.spot.id }; // so the next run doesn't repeat it
+      appointmentsRef.child(a.id).update({ linked: a.linked });
     });
   }
 
