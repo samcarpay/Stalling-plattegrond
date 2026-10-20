@@ -1144,6 +1144,10 @@
   /* ============================================================
      PHONE: compact header, bottom navigation, quick bay sheet
      ============================================================ */
+  /* the undo bar must disappear completely when it is hidden */
+  .undo-toast{transition:transform .2s ease, opacity .2s ease, visibility 0s linear .2s;}
+  .undo-toast:not(.show){opacity:0;visibility:hidden;}
+  .undo-toast.show{transition:transform .2s ease, opacity .2s ease;}
   #miniStat{display:none;}
   #bottomNav{display:none;}
   #mSheetBack{position:fixed;inset:0;z-index:900;background:rgba(20,20,20,.35);opacity:0;pointer-events:none;transition:opacity .18s ease;}
@@ -1195,7 +1199,8 @@
     .bn-item.on svg{color:var(--car);}
     .bn-item b{position:absolute;top:0;left:calc(50% + 6px);min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--car);color:#fff;font-size:10.5px;line-height:17px;}
     body.ms-open{overflow:hidden;}
-    .undo-toast{bottom:calc(84px + env(safe-area-inset-bottom));}
+    .undo-toast{bottom:calc(84px + env(safe-area-inset-bottom));transform:translate(-50%, calc(100% + 110px));}
+    .undo-toast.show{transform:translate(-50%, 0);}
   }
 
   /* ---------- no ✕ on tiles on a phone: delete/clear lives in the dialogs ---------- */
