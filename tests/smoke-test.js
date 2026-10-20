@@ -123,6 +123,10 @@ window.smokeTest = (() => {
       for(let s = 0; s < spots.length; s++){
         await step(`warehouse ${whName}: spot form ${s + 1}`, async () => {
           document.querySelectorAll('.spot:not(.gap):not(.drag-ghost)')[s].click(); await wait(300);
+          // phone layout: an occupied bay first opens a bottom sheet, whose
+          // "Bewerk plek" button opens the full form
+          const sheetEdit = document.querySelector('[data-ss-edit]');
+          if(!overlayOpen() && sheetEdit){ sheetEdit.click(); await wait(300); }
           if(!overlayOpen()) throw new Error('spot form did not open');
         });
       }
