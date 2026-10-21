@@ -2310,8 +2310,22 @@
     });
     toolbar.querySelector('#plnAddBtn').addEventListener('click', () => openPlanningBookingModal(null));
 
-    if(planningView === 'overzicht'){
-      renderPlanningOverzicht(container, monday);
+    if(planningView === 'overzicht' || planningView === 'day'){
+      renderPlanningOverzicht(container, monday, planningView);
+      wrap.appendChild(container);
+      return;
+    }
+    if(planningView === 'week'){
+      renderPlanningWeekBoard(container, monday);
+      wrap.appendChild(container);
+      return;
+    }
+    if(planningView === 'month'){
+      overzichtMonthRef = new Date(planningRefDate.getFullYear(), planningRefDate.getMonth(), 1);
+      const items = plnAllItems();
+      const todayIso = plnToday();
+      const thisWeek = [0,1,2,3,4,5,6].map(i => plnIso(plnAddDays(plnMonday(new Date()), i)));
+      container.appendChild(renderPlanningOverzichtMonth(plnItemsByDate(items), todayIso, thisWeek, true));
       wrap.appendChild(container);
       return;
     }
@@ -2387,7 +2401,9 @@
     alert('Kan niet met zekerheid bepalen welk voertuig in deze plek het betreft (meerdere voertuigen, geen duidelijke overeenkomst met naam of object nummer). Pas de plek zelf handmatig aan om deze klant als weg te markeren.');
   }
 
-  function renderPlanningOverzicht(container, monday){
+  function renderPlanningOverzicht(container, monday, mode){
+    const dayMode = mode === 'day';
+    const selIso = plnIso(planningRefDate);
     const todayIso = plnToday();
     const tomorrowIso = plnIso(plnAddDays(plnParseIso(todayIso), 1));
     const items = plnAllItems();
@@ -2416,6 +2432,18 @@
         return (nc ? `<strong class="plo-warn">${nc} nog bevestigen</strong> · ` : '') + (nr ? `${nr} klaargezet · ` : '');
       })()}${weekOther ? `plus ${weekOther} werkloods/overig · ` : ''}${days.includes(todayIso) ? 'deze week' : (monday > plnParseIso(todayIso) ? 'komende week' : 'eerdere week')}</div>
     `;
+    if(dayMode){
+      const sd = plnParseIso(selIso);
+      const its = byDate[selIso] || [];
+      const nP = its.filter(it => it.kind === 'ophalen').length;
+      const nOther = its.length - nP;
+      const dayAppts = appointments.filter(a => a.status !== 'done' && a.date === selIso);
+      const nc = dayAppts.filter(apptNeedsConfirm).length, nr = dayAppts.filter(a => a.readyAt).length;
+      const rel = selIso === todayIso ? 'vandaag' : selIso === tomorrowIso ? 'morgen' : '';
+      head.innerHTML = `
+        <div class="plo-h1">${DUTCH_DAY_NAMES[sd.getDay()]} ${sd.getDate()} ${DUTCH_MONTH_NAMES[sd.getMonth()]}</div>
+        <div class="plo-sub">${nP} keer ophalen${nOther ? ` · ${nOther} werkloods/overig` : ''}${nc ? ` · <strong class="plo-warn">${nc} nog bevestigen</strong>` : ''}${nr ? ` · ${nr} klaargezet` : ''}${rel ? ' · ' + rel : ''}</div>`;
+    }
     root.appendChild(head);
 
     // ---- 7-day strip ----
@@ -2428,6 +2456,7 @@
       if(iso === todayIso) cls.push('is-today');
       if(iso < todayIso) cls.push('is-past');
       if(blocked) cls.push('is-blocked');
+      if(dayMode && iso === selIso) cls.push('is-sel');
       return `<button type="button" class="${cls.join(' ')}" data-jump="${iso}">
         <span class="plo-daytile-d">${shortDay(iso)}${iso === todayIso ? '<span class="plo-tdl"> · vandaag</span>' : ''}</span>
         <span class="plo-daytile-n">${blocked && !n ? '—' : n}</span>
@@ -2445,7 +2474,7 @@
     list.className = 'plo-list';
     let html = '';
     const rowItems = [];
-    days.forEach(iso => {
+    (dayMode ? [selIso] : days).forEach(iso => {
       const dayItems = (byDate[iso] || []).slice().sort((a, b) => (a.time || '00:00').localeCompare(b.time || '00:00'));
       const d = plnParseIso(iso);
       const nP = dayItems.filter(it => it.kind === 'ophalen').length;
@@ -2557,16 +2586,75 @@
     }));
     list.querySelectorAll('.plo-row[data-idx]').forEach(row => row.addEventListener('click', () => plnClickItem(rowItems[parseInt(row.getAttribute('data-idx'), 10)])));
     strip.querySelectorAll('[data-jump]').forEach(btn => btn.addEventListener('click', () => {
+      if(dayMode){ planningRefDate = plnParseIso(btn.getAttribute('data-jump')); renderPlanningPage(); return; }
       const h = document.getElementById('plo-' + btn.getAttribute('data-jump'));
       if(h) h.scrollIntoView({ behavior:'smooth', block:'start' });
     }));
 
     // ---- month agenda underneath ----
-    root.appendChild(renderPlanningOverzichtMonth(byDate, todayIso, days));
+    if(!dayMode) root.appendChild(renderPlanningOverzichtMonth(byDate, todayIso, days));
     container.appendChild(root);
   }
 
-  function renderPlanningOverzichtMonth(byDate, todayIso, weekDays){
+  function renderPlanningWeekBoard(container, monday){
+    const todayIso = plnToday();
+    const byDate = plnItemsByDate(plnAllItems());
+    const days = [0,1,2,3,4,5,6].map(i => plnIso(plnAddDays(monday, i)));
+    const apptById = {};
+    appointments.forEach(a => { apptById[a.id] = a; });
+    const pickups = days.reduce((n, iso) => n + (byDate[iso] || []).filter(it => it.kind === 'ophalen').length, 0);
+    const wk = appointments.filter(a => a.status !== 'done' && days.includes(a.date));
+    const nc = wk.filter(apptNeedsConfirm).length, nr = wk.filter(a => a.readyAt).length;
+
+    const root = document.createElement('div');
+    root.className = 'plo';
+    root.innerHTML = `<div class="plo-head"><div class="plo-h1">${pickups} keer ophalen</div><div class="plo-sub">${nc ? `<strong class="plo-warn">${nc} nog bevestigen</strong> · ` : ''}${nr ? `${nr} klaargezet · ` : ''}week ${plnIsoWeek(monday)} · tik een afspraak voor alle knoppen</div></div>`;
+
+    const board = document.createElement('div');
+    board.className = 'plb';
+    const cardItems = [];
+    board.innerHTML = days.map(iso => {
+      const d = plnParseIso(iso);
+      const its = (byDate[iso] || []).slice().sort((a, b) => (a.time || '00:00').localeCompare(b.time || '00:00'));
+      const nP = its.filter(it => it.kind === 'ophalen').length;
+      const blocked = !!(blockedDates && blockedDates[iso]);
+      const cls = ['plb-col'];
+      if(iso === todayIso) cls.push('is-today');
+      if(iso < todayIso) cls.push('is-past');
+      if(blocked) cls.push('is-blocked');
+      const cards = its.map(it => {
+        const idx = cardItems.push(it) - 1;
+        if(it.kind !== 'ophalen'){
+          return `<button type="button" class="plb-card ${it.kind}${it.done ? ' is-done' : ''}" data-card="${idx}"><span class="plb-time">${escapeHtml(it.time || (it.endDate !== it.startDate ? 'hele dag' : ''))}</span><span class="plb-name">${plnTitleHtml(it)}</span><span class="plb-meta">${PLN_META[it.kind].label}</span></button>`;
+        }
+        const a = apptById[it.apptId];
+        const det = a ? plnPickupDetail(a) : { info:null, away:false, tag:'', place:'' };
+        let tagHtml = '';
+        if(!det.info) tagHtml = '<span class="plb-tag warn">Koppelen</span>';
+        else if(det.away) tagHtml = '<span class="plb-tag away">Weg</span>';
+        else if(apptNeedsConfirm(a)) tagHtml = '<span class="plb-tag confirm">Bevestigen</span>';
+        else if(a && a.readyAt) tagHtml = '<span class="plb-tag ready">● Klaar</span>';
+        return `<button type="button" class="plb-card${det.away ? ' is-away' : ''}" data-card="${idx}"><span class="plb-time">${escapeHtml(it.time || '')}</span><span class="plb-name">${escapeHtml((a && a.name) || 'Naam onbekend')}</span><span class="plb-meta">${det.info ? escapeHtml(det.info.warehouse.name + ' · ' + det.tag) : 'nog geen plek'}</span>${tagHtml}</button>`;
+      }).join('');
+      return `<section class="${cls.join(' ')}">
+        <button type="button" class="plb-head" data-day="${iso}"><span>${DUTCH_DAY_NAMES[d.getDay()].slice(0,2).toLowerCase()} ${d.getDate()}${iso === todayIso ? ' · vandaag' : ''}</span><b>${blocked && !nP ? '—' : nP}</b></button>
+        <div class="plb-cards">${cards || `<div class="plb-empty">${blocked ? 'geblokkeerd' : 'niets gepland'}</div>`}</div>
+      </section>`;
+    }).join('');
+    board.querySelectorAll('[data-card]').forEach(c => c.addEventListener('click', () => plnClickItem(cardItems[+c.getAttribute('data-card')])));
+    board.querySelectorAll('[data-day]').forEach(h => h.addEventListener('click', () => {
+      planningRefDate = plnParseIso(h.getAttribute('data-day'));
+      planningView = 'day';
+      renderPlanningPage();
+    }));
+    root.appendChild(board);
+    container.appendChild(root);
+    // on a phone the board scrolls sideways; start at today
+    const t = board.querySelector('.plb-col.is-today');
+    if(t && board.scrollWidth > board.clientWidth) requestAnimationFrame(() => { board.scrollLeft = Math.max(0, t.offsetLeft - 8); });
+  }
+
+  function renderPlanningOverzichtMonth(byDate, todayIso, weekDays, embedded){
     const y = overzichtMonthRef.getFullYear();
     const m = overzichtMonthRef.getMonth();
     const first = new Date(y, m, 1);
@@ -2599,14 +2687,14 @@
       </button>`;
     }
     const sec = document.createElement('section');
-    sec.className = 'plo-month';
+    sec.className = 'plo-month' + (embedded ? ' embedded' : '');
     sec.innerHTML = `
       <div class="plo-month-bar">
         <h3 class="plo-month-h">Agenda</h3>
         <button type="button" class="pln-nav-btn" data-mnav="-1" aria-label="Vorige maand">‹</button>
         <span class="plo-month-title">${DUTCH_MONTH_NAMES[m].charAt(0).toUpperCase() + DUTCH_MONTH_NAMES[m].slice(1)} ${y}</span>
         <button type="button" class="pln-nav-btn" data-mnav="1" aria-label="Volgende maand">›</button>
-        <span class="plo-muted">${monthPickups} keer ophalen</span>
+        <span class="plo-muted">${monthPickups} keer ophalen${embedded ? ' deze maand' : ''}</span>
       </div>
       <div class="plo-mhead">${['ma','di','wo','do','vr','za','zo'].map(n => `<span>${n}</span>`).join('')}</div>
       <div class="plo-mgrid">${cellHtml}</div>
@@ -2627,7 +2715,7 @@
     sec.addEventListener('touchend', e => {
       if(sx === null) return;
       const dx = e.changedTouches[0].clientX - sx; sx = null;
-      if(Math.abs(dx) > 60){ overzichtMonthRef = new Date(y, m + (dx < 0 ? 1 : -1), 1); renderPlanningPage(); }
+      if(Math.abs(dx) > 60){ overzichtMonthRef = new Date(y, m + (dx < 0 ? 1 : -1), 1); if(embedded) planningRefDate = new Date(overzichtMonthRef); renderPlanningPage(); }
     });
     sec.querySelectorAll('[data-mdate]').forEach(cell => cell.addEventListener('click', () => {
       const iso = cell.getAttribute('data-mdate');

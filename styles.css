@@ -1238,3 +1238,58 @@
   .ss-mini{font:inherit;font-size:13px;font-weight:700;padding:7px 10px;border-radius:999px;border:1px solid #e3c98a;background:#fff4dc;color:#7a5300;cursor:pointer;}
   .ss-mini.on{border-color:#14804a;background:#e7f2ec;color:#14804a;}
   .ss-mini[data-ss-confirm]{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  /* ---------- Planning: Dag / Week / Maand in the new style ---------- */
+  .plo-daytile.is-sel{outline:3px solid var(--car);outline-offset:1px;}
+  .plo-month.embedded .plo-month-bar [data-mnav],.plo-month.embedded .plo-month-title{display:none;}
+  @media (min-width:641px){ .plo-month.embedded .plo-mcell{min-height:118px;} }
+  .plb{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:start;}
+  .plb-col{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);overflow:hidden;min-width:0;}
+  .plb-col.is-past{opacity:.6;}
+  .plb-col.is-blocked{background:repeating-linear-gradient(135deg,var(--paper) 0 6px,var(--card) 6px 12px);}
+  .plb-head{font:inherit;width:100%;display:flex;justify-content:space-between;align-items:baseline;gap:6px;padding:9px 10px;border:0;border-bottom:1px solid var(--paper-line);background:var(--paper);color:var(--ink);font-size:13px;font-weight:800;cursor:pointer;text-align:left;}
+  .plb-head b{font-size:20px;}
+  .plb-col.is-today .plb-head{background:var(--accent);color:#fff;}
+  .plb-cards{display:flex;flex-direction:column;gap:6px;padding:8px;}
+  .plb-card{font:inherit;text-align:left;display:flex;flex-direction:column;gap:1px;padding:7px 8px;border-radius:8px;border:1px solid var(--line);border-left:4px solid var(--caravan);background:var(--card);color:var(--ink);cursor:pointer;min-width:0;}
+  .plb-card:hover{border-color:var(--ink-faint);}
+  .plb-card.werkloods{border-left-color:var(--accent);background:#FAFAF8;}
+  .plb-card.overig{border-left-color:var(--trailer);background:#FAFAF8;}
+  .plb-card.is-away{opacity:.6;}
+  .plb-time{font-size:12px;font-weight:800;color:var(--ink-soft);}
+  .plb-name{font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .plb-meta{font-size:12px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .plb-tag{align-self:flex-start;margin-top:3px;font-size:11px;font-weight:800;padding:2px 7px;border-radius:999px;}
+  .plb-tag.ready{background:#e7f2ec;color:#14804a;}
+  .plb-tag.confirm{background:#fdeef0;color:#a50e26;}
+  .plb-tag.warn{background:#fff4dc;color:#7a5300;}
+  .plb-tag.away{background:var(--paper-line);color:var(--ink);}
+  .plb-empty{font-size:12.5px;color:var(--ink-soft);font-style:italic;padding:6px 2px;}
+  @media (max-width:900px) and (min-width:701px){
+    .plb{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:10px;padding-bottom:6px;}
+    .plb-col{flex:0 0 46%;scroll-snap-align:start;}
+  }
+  /* phone: the week as one short list — every day a slim header, every appointment one compact row */
+  @media (max-width:700px){
+    .plb{display:flex;flex-direction:column;align-items:stretch;gap:0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-sm);}
+    .plb-col{border:0;border-radius:0;box-shadow:none;border-top:1px solid var(--line);}
+    .plb-col:first-child{border-top:0;}
+    .plb-col.is-past{opacity:.55;}
+    .plb-head{padding:7px 12px;font-size:13px;}
+    .plb-head b{font-size:13px;font-weight:700;color:var(--ink-soft);}
+    .plb-head b::after{content:" ophalen";font-weight:600;}
+    .plb-col.is-today .plb-head b{color:rgba(255,255,255,.8);}
+    .plb-cards{gap:0;padding:0;}
+    .plb-card{display:grid;grid-template-columns:44px minmax(0,1fr) auto;grid-template-areas:"time name tag" "time meta tag";column-gap:8px;align-items:center;border:0;border-left:4px solid var(--caravan);border-top:1px solid var(--paper-line);border-radius:0;padding:6px 12px 6px 9px;}
+    .plb-card:first-child{border-top:0;}
+    .plb-time{grid-area:time;font-size:13px;color:var(--ink);}
+    .plb-name{grid-area:name;font-size:14px;}
+    .plb-meta{grid-area:meta;font-size:11.5px;}
+    .plb-tag{grid-area:tag;margin:0;}
+    .plb-empty{display:none;}
+    .plb-col.is-blocked .plb-head span::after{content:" · geblokkeerd";font-weight:600;}
+    .plb-col.is-blocked .plb-head b{display:none;}
+  }
+
+/* werkloods/overig marked done (Klaar) on the week board */
+.plb-card.is-done{opacity:.55;}
