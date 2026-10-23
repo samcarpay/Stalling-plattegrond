@@ -5092,11 +5092,15 @@
 
   function renderRowBlock(row, sideName, idx, sideCount, sideKey, tagPrefix, hasAisle){
     const block = document.createElement('div');
-    block.className = 'row-block';
+    // row.continues: a second line of the row above (e.g. "Winter 3" over two
+    // lines) — drawn straight under it, without a heading of its own
+    block.className = 'row-block' + (row.continues && idx > 0 ? ' row-continues' : '');
 
     const head = document.createElement('div');
     head.className = 'row-head';
-    let actionsHtml = `<span class="add-spot-wrap"><button class="btn ghost small" data-add-spot="${row.id}">+ Plek toevoegen</button></span>`;
+    const isContinuation = !!(row.continues && idx > 0);
+    // a continuation line adds places with the "+" tile at the end of its lane
+    let actionsHtml = isContinuation ? '' : `<span class="add-spot-wrap"><button class="btn ghost small" data-add-spot="${row.id}">+ Plek toevoegen</button></span>`;
     if(idx === sideCount - 1){
       // controls live on the outermost (back) row
       if(sideCount > 1){
@@ -5105,15 +5109,20 @@
         actionsHtml += `<button class="side-toggle" data-add-row="${sideKey}">+ nog een rij toevoegen</button>`;
       }
     }
-    const activeCount = row.spots.filter(s => !s.removed).length;
-    const removedCount = row.spots.length - activeCount;
+    // a row continued on the next line(s) counts its places over all lines
+    const sideRows = (activeWarehouse() || {})[sideKey] || [];
+    const lines = [row];
+    for(let j = idx + 1; j < sideRows.length && sideRows[j].continues; j++) lines.push(sideRows[j]);
+    const allSpots = lines.flatMap(r => r.spots);
+    const activeCount = allSpots.filter(s => !s.removed).length;
+    const removedCount = allSpots.length - activeCount;
     const countLabel = `${activeCount} plek${activeCount===1?'':'ken'}` + (removedCount ? ` · ${removedCount} zonder plek` : '');
     head.innerHTML = `
-      <span class="row-tag">${row.name ? escapeHtml(row.name) : rowLabel(sideName, idx, hasAisle)}</span>
-      <span style="font-size:10.5px;color:var(--ink-faint);font-family:var(--font-display)">${countLabel}</span>
+      ${row.continues && idx > 0 ? '' : `<span class="row-tag">${row.name ? escapeHtml(row.name) : rowLabel(sideName, idx, hasAisle)}</span>`}
+      ${row.continues && idx > 0 ? '' : `<span style="font-size:10.5px;color:var(--ink-faint);font-family:var(--font-display)">${countLabel}</span>`}
       <div class="row-actions">${actionsHtml}</div>
     `;
-    block.appendChild(head);
+    if(!(isContinuation && !actionsHtml)) block.appendChild(head);
 
     const lane = document.createElement('div');
     lane.className = 'lane';
@@ -6570,8 +6579,11 @@
           html += printRowHtml(row, `${leftInfo.name} · rij ${i+1}`, leftInfo.tag);
         });
       } else {
+        let lastName = '';
         w.left.forEach((row, i) => {
-          html += printRowHtml(row, row.name || `Rij ${i+1}`, '');
+          const name = (row.continues && i > 0) ? `${lastName} (vervolg)` : (row.name || `Rij ${i+1}`);
+          if(!(row.continues && i > 0)) lastName = row.name || `Rij ${i+1}`;
+          html += printRowHtml(row, name, '');
         });
       }
 

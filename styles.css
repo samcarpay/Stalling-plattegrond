@@ -603,6 +603,11 @@
 
   .side-block{display:flex;flex-direction:column;}
   .row-block{margin-bottom:8px;}
+  /* second line of a row (row.continues): no divider in between, no own heading */
+  .row-block:has(+ .row-continues){margin-bottom:0;}
+  .row-block:has(+ .row-continues) .lane{border-bottom:0;padding-bottom:4px;}
+  .row-block.row-continues .row-head{margin-bottom:0;}
+  .row-block.row-continues .lane{padding-top:4px;}
   .row-head{
     display:flex;align-items:center;gap:8px;margin-bottom:6px;
     position:sticky;left:0;width:fit-content;
