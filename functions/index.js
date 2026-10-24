@@ -451,7 +451,10 @@ exports.checkObjectNummer = onRequest(
 //   3. the signed contract with the PDF — the moment the customer signs
 //      (status klaar_voor_ondertekening → voltooid), with a copy to info@
 // Each result is written back on the document (…MailVerzonden or …MailFout)
-// so the contract program can show it. Every e-mail is also BCC'd to info@.
+// so the contract program can show it. A copy of every contract e-mail goes
+// to contracten@ (BCC), so the info@ inbox stays for real mail.
+// Also: the confirmation e-mail after a pickup request on the website
+// (pickupConfirmationMail, further down).
 //
 // The info@ password is NOT in this repo — Firebase secret MIGADU_INFO_PASSWORD.
 // ─────────────────────────────────────────────────────────────────
@@ -461,6 +464,7 @@ const vm = require('vm');
 const MIGADU_INFO_PASSWORD = defineSecret('MIGADU_INFO_PASSWORD');
 const MAIL_ADDRESS = 'info@zwartendijkstalling.nl';
 const MAIL_FROM = `"Zwartendijk Stalling" <${MAIL_ADDRESS}>`;
+const COPY_ADDRESS = 'contracten@zwartendijkstalling.nl'; // copies of contract e-mails
 const SIGN_PAGE = 'https://zwartendijkstalling.nl/stallingscontract/onderteken.html';
 const CONTRACT_TEMPLATE_URL = 'https://zwartendijkstalling.nl/stallingscontract/contract-template.js';
 const MAIL_SIGNATURE = 'Met vriendelijke groet,\n\nSylvia en Sam\nZwartendijk Stalling\nOosteinderweg 111, 1432 AH Aalsmeer\n06 28 27 33 31\nwww.zwartendijkstalling.nl';
@@ -482,11 +486,15 @@ function textToHtml(text){
       .replace(/(https:\/\/[^\s<]+)/g, '<a href="$1">$1</a>') + '</p>').join('') + '</div>';
 }
 
-async function sendMail({ to, subject, text, attachments }){
-  await mailTransport().sendMail({
-    from: MAIL_FROM, to, bcc: MAIL_ADDRESS, replyTo: MAIL_ADDRESS,
+async function sendMail({ to, subject, text, attachments, copy = true }){
+  const info = await mailTransport().sendMail({
+    from: MAIL_FROM, to, bcc: copy ? COPY_ADDRESS : undefined, replyTo: MAIL_ADDRESS,
     subject, text, html: textToHtml(text), attachments,
   });
+  // a rejected customer address counts as failed; a rejected copy doesn't
+  if((info.rejected || []).some(r => String(r).toLowerCase() === String(to).toLowerCase())){
+    throw new Error('adres geweigerd: ' + to);
+  }
 }
 
 function sameValue(a, b){
@@ -636,6 +644,60 @@ ${MAIL_SIGNATURE}`,
           await markMail(ref, 'contractMailVerzonden', 'contractMailFout', err);
         }
       }
+    }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────
+// PICKUP CONFIRMATION (website Ophalen form) from info@
+//
+// A customer's pickup request lands under pickup-appointments; this sends
+// them a confirmation. Requests made by staff in the app (with a 'source')
+// get none. Which requests got their e-mail is kept under
+// SYNC_PATH/mail-log/pickups, so a retried run never sends twice.
+// ─────────────────────────────────────────────────────────────────
+function longDutchDate(iso){
+  if(!iso) return '';
+  const d = new Date(iso + 'T12:00:00Z');
+  return isNaN(d) ? iso : d.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Amsterdam' });
+}
+function looksLikeEmail(v){ return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v || '').trim()); }
+
+exports.pickupConfirmationMail = onValueCreated(
+  { ref: '/pickup-appointments/{apptId}', region: 'europe-west1', instance: 'stalling-plattegrond-default-rtdb', secrets: [MIGADU_INFO_PASSWORD], maxInstances: 3, timeoutSeconds: 60 },
+  async (event) => {
+    const a = event.data.val() || {};
+    if(a.source) return; // staff-made in the app, not a customer request
+    const to = String(a.contact || '').trim();
+    if(!looksLikeEmail(to)) return;
+    const logRef = admin.database().ref(`${SYNC_PATH}/mail-log/pickups/${event.params.apptId}`);
+    const claim = await logRef.transaction(cur => (cur ? undefined : { status: 'bezig', at: Date.now() }));
+    if(!claim.committed) return;
+    const naam = String(a.name || '').trim() || 'klant';
+    try{
+      await sendMail({
+        to,
+        copy: false,
+        subject: 'Uw ophaalverzoek bij Zwartendijk Stalling',
+        text:
+`Beste ${naam},
+
+Bedankt voor uw ophaalverzoek. Wij hebben het goed ontvangen:
+
+Object: ${a.vehicleDesc || '—'}
+Datum: ${longDutchDate(a.date) || '—'}
+Tijd: ${a.time || '—'}${a.notes ? '\nOpmerkingen: ' + a.notes : ''}
+
+Komt de gekozen datum of tijd ons onverhoopt niet uit, dan nemen wij contact met u op.
+
+Heeft u vragen, of wilt u iets wijzigen? Beantwoord deze e-mail of bel ons gerust.
+
+${MAIL_SIGNATURE}`,
+      });
+      await logRef.set({ status: 'verzonden', at: Date.now() });
+    }catch(err){
+      logger.error('Pickup confirmation failed', event.params.apptId, err.message);
+      await logRef.set({ status: 'fout', at: Date.now(), error: String(err.message || err).slice(0, 300) });
     }
   }
 );
