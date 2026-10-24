@@ -474,7 +474,7 @@ const MAIL_SIGNATURE_HTML =
   '<p style="margin:16px 0 0;">Met vriendelijke groet,</p>' +
   '<p style="margin:12px 0 8px;">Sylvia en Sam</p>' +
   '<p style="margin:0 0 8px;"><img src="cid:zwartendijk-logo" alt="Zwartendijk Stalling" width="220" height="90" style="display:block;width:220px;height:90px;border:0;"></p>' +
-  '<p style="margin:0;">06 28 27 33 31<br><a href="https://www.zwartendijkstalling.nl" style="color:#1c1c1c;">www.zwartendijkstalling.nl</a></p>';
+  '<p style="margin:0;"><a href="tel:+31628273331" style="color:#1c1c1c;text-decoration:none;">06 28 27 33 31</a><br><a href="https://www.zwartendijkstalling.nl" style="color:#1c1c1c;">www.zwartendijkstalling.nl</a></p>';
 const MAIL_LOGO = { filename: 'zwartendijk-logo.png', path: require('path').join(__dirname, 'mail-logo.png'), cid: 'zwartendijk-logo', contentDisposition: 'inline' };
 
 function mailTransport(){
