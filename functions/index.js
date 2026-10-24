@@ -439,3 +439,203 @@ exports.checkObjectNummer = onRequest(
     }
   }
 );
+
+// ─────────────────────────────────────────────────────────────────
+// CONTRACT E-MAILS FROM info@zwartendijkstalling.nl (Migadu)
+//
+// Three e-mails around the contract program (aanvragen in Firestore):
+//   1. signing link — when staff approve a request, or resend the link:
+//      admin.html sets tekenlinkMailVerzoek (a timestamp)
+//   2. no place available — when staff decline a request:
+//      admin.html sets status 'afgewezen' + afwijzingMailVerzoek
+//   3. the signed contract with the PDF — the moment the customer signs
+//      (status klaar_voor_ondertekening → voltooid), with a copy to info@
+// Each result is written back on the document (…MailVerzonden or …MailFout)
+// so the contract program can show it. Every e-mail is also BCC'd to info@.
+//
+// The info@ password is NOT in this repo — Firebase secret MIGADU_INFO_PASSWORD.
+// ─────────────────────────────────────────────────────────────────
+const { onDocumentUpdated } = require('firebase-functions/v2/firestore');
+const nodemailer = require('nodemailer');
+const vm = require('vm');
+const MIGADU_INFO_PASSWORD = defineSecret('MIGADU_INFO_PASSWORD');
+const MAIL_ADDRESS = 'info@zwartendijkstalling.nl';
+const MAIL_FROM = `"Zwartendijk Stalling" <${MAIL_ADDRESS}>`;
+const SIGN_PAGE = 'https://zwartendijkstalling.nl/stallingscontract/onderteken.html';
+const CONTRACT_TEMPLATE_URL = 'https://zwartendijkstalling.nl/stallingscontract/contract-template.js';
+const MAIL_SIGNATURE = 'Met vriendelijke groet,\n\nSylvia en Sam\nZwartendijk Stalling\nOosteinderweg 111, 1432 AH Aalsmeer\n06 28 27 33 31\nwww.zwartendijkstalling.nl';
+
+function mailTransport(){
+  return nodemailer.createTransport({
+    host: 'smtp.migadu.com', port: 465, secure: true,
+    auth: { user: MAIL_ADDRESS, pass: MIGADU_INFO_PASSWORD.value() },
+  });
+}
+
+function escHtml(s){
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+// plain text → simple HTML (paragraphs, line breaks, clickable links)
+function textToHtml(text){
+  return '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#1c1c1c;">' +
+    text.split(/\n{2,}/).map(p => '<p>' + escHtml(p).replace(/\n/g, '<br>')
+      .replace(/(https:\/\/[^\s<]+)/g, '<a href="$1">$1</a>') + '</p>').join('') + '</div>';
+}
+
+async function sendMail({ to, subject, text, attachments }){
+  await mailTransport().sendMail({
+    from: MAIL_FROM, to, bcc: MAIL_ADDRESS, replyTo: MAIL_ADDRESS,
+    subject, text, html: textToHtml(text), attachments,
+  });
+}
+
+function sameValue(a, b){
+  if(a && typeof a.isEqual === 'function') return !!b && a.isEqual(b);
+  return a === b;
+}
+function dutchDate(date){
+  return date.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Amsterdam' }).replace(/\//g, '-');
+}
+
+// The contract PDF, built with the same contract-template.js the signing
+// page uses (fetched from the website, so both always match).
+async function renderSignedContractPdf(d){
+  const res = await fetch(CONTRACT_TEMPLATE_URL + '?v=' + Date.now());
+  if(!res.ok) throw new Error('contract-template.js: HTTP ' + res.status);
+  const code = await res.text();
+  const { jsPDF } = require('jspdf');
+  const sandbox = { window: { jspdf: { jsPDF } }, console, Date, JSON, Math, String, Array, Object, Number, Error };
+  vm.createContext(sandbox);
+  vm.runInContext(code + '\n;this.__t = { renderContractPdf, appendScanPage };', sandbox, { timeout: 10000 });
+  const { renderContractPdf, appendScanPage } = sandbox.__t;
+  const signed = d.ondertekendOp && d.ondertekendOp.toDate ? d.ondertekendOp.toDate() : new Date();
+  const datum = dutchDate(signed);
+  const data = {
+    voornaam: d.voornaam, achternaam: d.achternaam, adres: d.adres,
+    postcode: d.postcode, woonplaats: d.woonplaats, email: d.email, telefoon: d.telefoon,
+    categorie: (d.categorie || 'voertuig').toLowerCase(), kenteken: d.kenteken,
+    merk: d.merk, type: d.type, lengte: d.lengte, breedte: d.breedte,
+    objectnummer: d.objectnummer, startdatum: d.startdatum, prijs: d.prijs, periode: d.periode || 'maand',
+    vandaag: datum, extraVoorwaarden: d.extraVoorwaarden,
+  };
+  const isFoto = d.ondertekenMethode === 'foto';
+  const doc = renderContractPdf(data, isFoto ? null : d.handtekening, null, isFoto ? null : datum);
+  if(isFoto) appendScanPage(doc, d.handtekening);
+  return Buffer.from(doc.output('arraybuffer'));
+}
+
+// Claims one e-mail on the document first, so a retried function run
+// can never send it twice.
+async function claimMail(ref, field){
+  return admin.firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const cur = snap.get(field);
+    if(cur === 'bezig' || (cur && typeof cur.toDate === 'function')) return false;
+    tx.update(ref, { [field]: 'bezig' });
+    return true;
+  });
+}
+async function markMail(ref, field, errField, err){
+  const FieldValue = admin.firestore.FieldValue;
+  await ref.update(err
+    ? { [field]: FieldValue.delete(), [errField]: String(err.message || err).slice(0, 300) }
+    : { [field]: FieldValue.serverTimestamp(), [errField]: FieldValue.delete() });
+}
+
+exports.contractMails = onDocumentUpdated(
+  { document: 'aanvragen/{docId}', region: 'europe-west1', secrets: [MIGADU_INFO_PASSWORD], memory: '512MiB', timeoutSeconds: 120, maxInstances: 3 },
+  async (event) => {
+    const before = event.data.before.data() || {};
+    const d = event.data.after.data() || {};
+    const ref = event.data.after.ref;
+    const naam = (d.voornaam || '').trim() || 'klant';
+
+    // 1. signing link (a new request from the contract program)
+    if(d.tekenlinkMailVerzoek && !sameValue(before.tekenlinkMailVerzoek, d.tekenlinkMailVerzoek) && d.status === 'klaar_voor_ondertekening' && d.email){
+      const field = 'tekenlinkMail_' + d.tekenlinkMailVerzoek.toMillis();
+      if(await claimMail(ref, field)){
+        try{
+          await sendMail({
+            to: d.email,
+            subject: 'Uw stallingscontract bij Zwartendijk Stalling — graag ondertekenen',
+            text:
+`Beste ${naam},
+
+Goed nieuws: uw aanvraag is goedgekeurd. Wij hebben een plek voor u, met objectnummer ${d.objectnummer || '—'} en startdatum ${d.startdatum || '—'}.
+
+Via de link hieronder kunt u het stallingscontract bekijken en digitaal ondertekenen:
+
+${SIGN_PAGE}?id=${event.params.docId}
+
+Na het ondertekenen ontvangt u het contract ook per e-mail.
+
+Heeft u vragen? Beantwoord deze e-mail of bel ons gerust.
+
+${MAIL_SIGNATURE}`,
+          });
+          await markMail(ref, 'tekenlinkMailVerzonden', 'tekenlinkMailFout');
+          await ref.update({ [field]: admin.firestore.FieldValue.delete() });
+        }catch(err){
+          logger.error('Signing link mail failed', event.params.docId, err.message);
+          await markMail(ref, 'tekenlinkMailVerzonden', 'tekenlinkMailFout', err);
+          await ref.update({ [field]: admin.firestore.FieldValue.delete() });
+        }
+      }
+    }
+
+    // 2. no place available
+    if(d.afwijzingMailVerzoek && !sameValue(before.afwijzingMailVerzoek, d.afwijzingMailVerzoek) && d.status === 'afgewezen' && d.email){
+      if(await claimMail(ref, 'afwijzingMailVerzonden')){
+        try{
+          await sendMail({
+            to: d.email,
+            subject: 'Uw stallingsaanvraag bij Zwartendijk Stalling',
+            text:
+`Beste ${naam},
+
+Hartelijk dank voor uw aanvraag voor het stallen van uw ${(d.categorie || 'voertuig').toLowerCase()} bij Zwartendijk Stalling.
+
+Helaas hebben wij op dit moment geen ruimte beschikbaar die aansluit bij uw aanvraag. Mocht u in de toekomst nog een plaats zoeken, dan bent u altijd vrij om nogmaals een aanvraag te doen.
+
+Onze excuses voor het ongemak.
+
+${MAIL_SIGNATURE}`,
+          });
+          await markMail(ref, 'afwijzingMailVerzonden', 'afwijzingMailFout');
+        }catch(err){
+          logger.error('Decline mail failed', event.params.docId, err.message);
+          await markMail(ref, 'afwijzingMailVerzonden', 'afwijzingMailFout', err);
+        }
+      }
+    }
+
+    // 3. just signed: the contract with the PDF
+    if(before.status === 'klaar_voor_ondertekening' && d.status === 'voltooid' && d.email){
+      if(await claimMail(ref, 'contractMailVerzonden')){
+        try{
+          const pdf = await renderSignedContractPdf(d);
+          const filename = `Stallingscontract_${d.achternaam || ''}_${d.voornaam || ''}.pdf`.replace(/\s+/g, '_');
+          await sendMail({
+            to: d.email,
+            subject: 'Uw ondertekende stallingscontract — Zwartendijk Stalling',
+            text:
+`Beste ${naam},
+
+Hartelijk dank voor het ondertekenen van uw stallingscontract. In de bijlage vindt u het ondertekende contract (objectnummer ${d.objectnummer || '—'}, startdatum ${d.startdatum || '—'}). Bewaar het goed.
+
+Wilt u uw object ophalen? Meld dat minimaal 3 dagen van tevoren via https://zwartendijkstalling.nl/ophalen/ met uw objectnummer.
+
+Heeft u vragen? Beantwoord deze e-mail of bel ons gerust.
+
+${MAIL_SIGNATURE}`,
+            attachments: [{ filename, content: pdf, contentType: 'application/pdf' }],
+          });
+          await markMail(ref, 'contractMailVerzonden', 'contractMailFout');
+        }catch(err){
+          logger.error('Signed contract mail failed', event.params.docId, err.message);
+          await markMail(ref, 'contractMailVerzonden', 'contractMailFout', err);
+        }
+      }
+    }
+  }
+);
