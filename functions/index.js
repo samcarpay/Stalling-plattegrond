@@ -467,7 +467,15 @@ const MAIL_FROM = `"Zwartendijk Stalling" <${MAIL_ADDRESS}>`;
 const COPY_ADDRESS = 'contracten@zwartendijkstalling.nl'; // copies of contract e-mails
 const SIGN_PAGE = 'https://zwartendijkstalling.nl/stallingscontract/onderteken.html';
 const CONTRACT_TEMPLATE_URL = 'https://zwartendijkstalling.nl/stallingscontract/contract-template.js';
-const MAIL_SIGNATURE = 'Met vriendelijke groet,\n\nSylvia en Sam\nZwartendijk Stalling\nOosteinderweg 111, 1432 AH Aalsmeer\n06 28 27 33 31\nwww.zwartendijkstalling.nl';
+// The signature under every e-mail, like the one in Sylvia and Sam's own
+// mail: names, the logo (mail-logo.png, sent along inline), phone, website.
+const MAIL_SIGNATURE_TEXT = 'Met vriendelijke groet,\n\nSylvia en Sam\nZwartendijk Stalling\n06 28 27 33 31\nwww.zwartendijkstalling.nl';
+const MAIL_SIGNATURE_HTML =
+  '<p style="margin:16px 0 0;">Met vriendelijke groet,</p>' +
+  '<p style="margin:12px 0 8px;">Sylvia en Sam</p>' +
+  '<p style="margin:0 0 8px;"><img src="cid:zwartendijk-logo" alt="Zwartendijk Stalling" width="220" height="90" style="display:block;width:220px;height:90px;border:0;"></p>' +
+  '<p style="margin:0;">06 28 27 33 31<br><a href="https://www.zwartendijkstalling.nl" style="color:#1c1c1c;">www.zwartendijkstalling.nl</a></p>';
+const MAIL_LOGO = { filename: 'zwartendijk-logo.png', path: require('path').join(__dirname, 'mail-logo.png'), cid: 'zwartendijk-logo', contentDisposition: 'inline' };
 
 function mailTransport(){
   return nodemailer.createTransport({
@@ -481,15 +489,18 @@ function escHtml(s){
 }
 // plain text → simple HTML (paragraphs, line breaks, clickable links)
 function textToHtml(text){
-  return '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#1c1c1c;">' +
-    text.split(/\n{2,}/).map(p => '<p>' + escHtml(p).replace(/\n/g, '<br>')
-      .replace(/(https:\/\/[^\s<]+)/g, '<a href="$1">$1</a>') + '</p>').join('') + '</div>';
+  return text.split(/\n{2,}/).map(p => '<p style="margin:0 0 12px;">' + escHtml(p).replace(/\n/g, '<br>')
+    .replace(/(https:\/\/[^\s<]+)/g, '<a href="$1">$1</a>') + '</p>').join('');
 }
 
+// text = the message itself; the signature with the logo is added here
 async function sendMail({ to, subject, text, attachments, copy = true }){
   const info = await mailTransport().sendMail({
     from: MAIL_FROM, to, bcc: copy ? COPY_ADDRESS : undefined, replyTo: MAIL_ADDRESS,
-    subject, text, html: textToHtml(text), attachments,
+    subject,
+    text: text + '\n\n' + MAIL_SIGNATURE_TEXT,
+    html: '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#1c1c1c;">' + textToHtml(text) + MAIL_SIGNATURE_HTML + '</div>',
+    attachments: [...(attachments || []), MAIL_LOGO],
   });
   // a rejected customer address counts as failed; a rejected copy doesn't
   if((info.rejected || []).some(r => String(r).toLowerCase() === String(to).toLowerCase())){
@@ -577,9 +588,7 @@ ${SIGN_PAGE}?id=${event.params.docId}
 
 Na het ondertekenen ontvangt u het contract ook per e-mail.
 
-Heeft u vragen? Beantwoord deze e-mail of bel ons gerust.
-
-${MAIL_SIGNATURE}`,
+Heeft u vragen? Beantwoord deze e-mail of bel ons gerust.`,
           });
           await markMail(ref, 'tekenlinkMailVerzonden', 'tekenlinkMailFout');
           await ref.update({ [field]: admin.firestore.FieldValue.delete() });
@@ -605,9 +614,7 @@ Hartelijk dank voor uw aanvraag voor het stallen van uw ${(d.categorie || 'voert
 
 Helaas hebben wij op dit moment geen ruimte beschikbaar die aansluit bij uw aanvraag. Mocht u in de toekomst nog een plaats zoeken, dan bent u altijd vrij om nogmaals een aanvraag te doen.
 
-Onze excuses voor het ongemak.
-
-${MAIL_SIGNATURE}`,
+Onze excuses voor het ongemak.`,
           });
           await markMail(ref, 'afwijzingMailVerzonden', 'afwijzingMailFout');
         }catch(err){
@@ -633,9 +640,7 @@ Hartelijk dank voor het ondertekenen van uw stallingscontract. In de bijlage vin
 
 Wilt u uw object ophalen? Meld dat minimaal 3 dagen van tevoren via https://zwartendijkstalling.nl/ophalen/ met uw objectnummer.
 
-Heeft u vragen? Beantwoord deze e-mail of bel ons gerust.
-
-${MAIL_SIGNATURE}`,
+Heeft u vragen? Beantwoord deze e-mail of bel ons gerust.`,
             attachments: [{ filename, content: pdf, contentType: 'application/pdf' }],
           });
           await markMail(ref, 'contractMailVerzonden', 'contractMailFout');
@@ -690,9 +695,7 @@ Tijd: ${a.time || '—'}${a.notes ? '\nOpmerkingen: ' + a.notes : ''}
 
 Komt de gekozen datum of tijd ons onverhoopt niet uit, dan nemen wij contact met u op.
 
-Heeft u vragen, of wilt u iets wijzigen? Beantwoord deze e-mail of bel ons gerust.
-
-${MAIL_SIGNATURE}`,
+Heeft u vragen, of wilt u iets wijzigen? Beantwoord deze e-mail of bel ons gerust.`,
       });
       await logRef.set({ status: 'verzonden', at: Date.now() });
     }catch(err){
