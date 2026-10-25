@@ -49,6 +49,14 @@ async function sendToAllDevices(message){
   }));
 }
 
+// red count on the app icon = customer requests that came in since someone
+// (on any device) last opened the Agenda — the app computes the same (syncAppBadge)
+function unseenRequestCount(appts, lastSeen){
+  return Object.values(appts || {})
+    .filter(a => a && !a.source && a.status === 'requested' && (a.createdAt || 0) > (lastSeen || 0))
+    .length;
+}
+
 function formatDate(isoDate){
   if(!isoDate) return '';
   const d = new Date(isoDate + 'T12:00:00Z');
@@ -73,11 +81,7 @@ exports.notifyNewPickup = onValueCreated(
       db.ref('pickup-appointments').once('value'),
     ]);
 
-    // badge = customer requests that came in since someone last opened the Agenda
-    const lastSeen = seenSnap.val() || 0;
-    const badge = Object.values(apptsSnap.val() || {})
-      .filter(a => a && !a.source && a.status === 'requested' && (a.createdAt || 0) > lastSeen)
-      .length;
+    const badge = unseenRequestCount(apptsSnap.val(), seenSnap.val());
 
     const when = [formatDate(appt.date), appt.time].filter(Boolean).join(' ');
     await sendToAllDevices({
@@ -308,11 +312,14 @@ exports.morningAwayReminder = onSchedule(
   },
   async () => {
     const db = admin.database();
-    const [dataSnap, apptsSnap, planningSnap] = await Promise.all([
+    const [dataSnap, apptsSnap, planningSnap, seenSnap] = await Promise.all([
       db.ref(`${SYNC_PATH}/data`).once('value'),
       db.ref('pickup-appointments').once('value'),
       db.ref('werkloods-bookings').once('value'),
+      db.ref(`${SYNC_PATH}/push/lastSeenAgendaAt`).once('value'),
     ]);
+    // the morning messages also put the red count on every phone in step
+    const badge = unseenRequestCount(apptsSnap.val(), seenSnap.val());
     const plattegrond = JSON.parse(dataSnap.val() || '{}');
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' }); // YYYY-MM-DD
 
@@ -331,6 +338,7 @@ exports.morningAwayReminder = onSchedule(
         body: lines.slice(0, 4).join('\n') + (lines.length > 4 ? `\nen nog ${lines.length - 4}` : ''),
         tag: `morning-planning-${today}`,
         open: 'planning',
+        badge,
       });
       logger.info('Morning planning reminder sent', planning.length);
     }
@@ -349,6 +357,7 @@ exports.morningAwayReminder = onSchedule(
       title: `Vandaag ${notAway.length} ophaling${notAway.length === 1 ? '' : 'en'} nog niet als weg gemarkeerd`,
       body: shown,
       tag: `morning-away-${today}`,
+      badge,
     });
     logger.info('Morning reminder sent', notAway.length);
   }
