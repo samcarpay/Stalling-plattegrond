@@ -408,10 +408,16 @@
     try{
       appointmentsRef = firebase.database().ref(APPOINTMENTS_PATH);
       refreshPushSubscription();
+      // when ANY device opens the Agenda, the red count goes away here too
+      if(syncRef) syncRef.child('push/lastSeenAgendaAt').on('value', (snap) => {
+        sharedLastSeenAgendaAt = snap.val() || 0;
+        syncAppBadge();
+      });
       appointmentsRef.on('value', (snapshot) => {
         const val = snapshot.val() || {};
         appointments = Object.keys(val).map(k => ({ id: k, ...val[k] }));
         scheduleHealAppointmentLinks();
+        syncAppBadge();
         renderTabs();
         if(showAgenda) renderAgendaPage();
         if(showPlanning) renderPlanningPage();
@@ -494,6 +500,17 @@
       console.error('Refreshing push subscription failed', e);
     }
   }
+
+  // The red count on the app icon = customer pickup requests that came in
+  // since someone (on any device) last opened the Agenda — the same count
+  // the push notifications use (notifyNewPickup in functions/index.js).
+  let sharedLastSeenAgendaAt = 0;
+  function syncAppBadge(){
+    if(!navigator.setAppBadge) return;
+    const n = appointments.filter(a => a && !a.source && a.status === 'requested' && (a.createdAt || 0) > sharedLastSeenAgendaAt).length;
+    (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {});
+  }
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') syncAppBadge(); });
 
   // called whenever the Agenda is on screen: clears the red count on the icon
   function markAgendaSeen(){
