@@ -458,7 +458,9 @@ exports.checkObjectNummer = onRequest(
 //   2. no place available — when staff decline a request:
 //      admin.html sets status 'afgewezen' + afwijzingMailVerzoek
 //   3. the signed contract with the PDF — the moment the customer signs
-//      (status klaar_voor_ondertekening → voltooid), with a copy to info@
+//      (status klaar_voor_ondertekening → voltooid)
+//   4. the signed contract again, on request: "Contract mailen" in the
+//      contract program sets contractMailVerzoek
 // Each result is written back on the document (…MailVerzonden or …MailFout)
 // so the contract program can show it. A copy of every contract e-mail goes
 // to contracten@ (BCC), so the info@ inbox stays for real mail.
@@ -526,16 +528,27 @@ function dutchDate(date){
 }
 
 // The contract PDF, built with the same contract-template.js the signing
-// page uses (fetched from the website, so both always match).
-async function renderSignedContractPdf(d){
+// page and the contract program use (fetched from the website, so all
+// match). Once the contract program has stored the signed text
+// (contractVersie), that exact text is used, plus the "wijzigingen na
+// ondertekening" appendix — the same PDF as "Contract opnieuw downloaden"
+// (renderSignedPdf in admin.html).
+function isoToDutch(iso){
+  const [y, m, dd] = String(iso || '').slice(0, 10).split('-');
+  return dd && m && y ? `${dd}-${m}-${y}` : String(iso || '');
+}
+async function loadContractTemplate(){
   const res = await fetch(CONTRACT_TEMPLATE_URL + '?v=' + Date.now());
   if(!res.ok) throw new Error('contract-template.js: HTTP ' + res.status);
   const code = await res.text();
   const { jsPDF } = require('jspdf');
   const sandbox = { window: { jspdf: { jsPDF } }, console, Date, JSON, Math, String, Array, Object, Number, Error };
   vm.createContext(sandbox);
-  vm.runInContext(code + '\n;this.__t = { renderContractPdf, appendScanPage };', sandbox, { timeout: 10000 });
-  const { renderContractPdf, appendScanPage } = sandbox.__t;
+  vm.runInContext(code + '\n;this.__t = { renderContractPdf, appendScanPage, appendTextPage };', sandbox, { timeout: 10000 });
+  return sandbox.__t;
+}
+async function renderSignedContractPdf(d){
+  const { renderContractPdf, appendScanPage, appendTextPage } = await loadContractTemplate();
   const signed = d.ondertekendOp && d.ondertekendOp.toDate ? d.ondertekendOp.toDate() : new Date();
   const datum = dutchDate(signed);
   const data = {
@@ -546,10 +559,31 @@ async function renderSignedContractPdf(d){
     objectnummer: d.objectnummer, startdatum: d.startdatum, prijs: d.prijs, periode: d.periode || 'maand',
     vandaag: datum, extraVoorwaarden: d.extraVoorwaarden,
   };
+  const versie = d.contractVersie || null;
+  let frozen = null;
+  try{ const b = versie ? JSON.parse(versie.blocks) : null; if(Array.isArray(b) && b.length) frozen = b; }catch(e){}
   const isFoto = d.ondertekenMethode === 'foto';
-  const doc = renderContractPdf(data, isFoto ? null : d.handtekening, null, isFoto ? null : datum);
+  const doc = renderContractPdf(data, isFoto ? null : d.handtekening, frozen, isFoto ? null : ((versie && versie.datum) || datum));
+  const lines = (Array.isArray(d.wijzigingen) ? d.wijzigingen : []).slice()
+    .sort((a, b) => String(a.op).localeCompare(String(b.op)))
+    .map(w => `${isoToDutch(w.op)} - ${w.veld}: gewijzigd van "${w.oud || '(leeg)'}" naar "${w.nieuw || '(leeg)'}"`);
+  const notes = [];
+  if(versie && versie.achteraf){
+    notes.push(`Aantekening: de tekst van dit contract is op ${isoToDutch(versie.vastgelegdOp)} vastgelegd op basis van de op dat moment geregistreerde gegevens.`);
+  }
+  if(lines.length){
+    appendTextPage(doc, 'Bijlage: wijzigingen na ondertekening', [
+      "Onderstaande gegevens zijn na ondertekening gewijzigd in de administratie van Zwartendijk Stalling. De ondertekende tekst op de voorgaande pagina's is ongewijzigd.",
+      ...lines, ...notes,
+    ]);
+  }else if(notes.length){
+    appendTextPage(doc, 'Bijlage: administratieve aantekening', notes);
+  }
   if(isFoto) appendScanPage(doc, d.handtekening);
   return Buffer.from(doc.output('arraybuffer'));
+}
+function contractFilename(d){
+  return `Stallingscontract_${d.achternaam || ''}_${d.voornaam || ''}.pdf`.replace(/\s+/g, '_');
 }
 
 // Claims one e-mail on the document first, so a retried function run
@@ -633,12 +667,40 @@ Onze excuses voor het ongemak.`,
       }
     }
 
+    // 4. staff e-mail the signed contract (again): "Contract mailen"
+    if(d.contractMailVerzoek && !sameValue(before.contractMailVerzoek, d.contractMailVerzoek) && d.status === 'voltooid' && d.email){
+      const field = 'contractMail_' + d.contractMailVerzoek.toMillis();
+      if(await claimMail(ref, field)){
+        try{
+          const pdf = await renderSignedContractPdf(d);
+          await sendMail({
+            to: d.email,
+            subject: 'Uw stallingscontract — Zwartendijk Stalling',
+            text:
+`Beste ${naam},
+
+In de bijlage vindt u uw stallingscontract bij Zwartendijk Stalling (objectnummer ${d.objectnummer || '—'}, startdatum ${d.startdatum || '—'}).
+
+Wilt u uw object ophalen? Meld dat minimaal 3 dagen van tevoren via https://zwartendijkstalling.nl/ophalen/ met uw objectnummer.
+
+Heeft u vragen? Beantwoord deze e-mail of bel ons gerust.`,
+            attachments: [{ filename: contractFilename(d), content: pdf, contentType: 'application/pdf' }],
+          });
+          await markMail(ref, 'contractHerMailVerzonden', 'contractHerMailFout');
+        }catch(err){
+          logger.error('Contract resend failed', event.params.docId, err.message);
+          await markMail(ref, 'contractHerMailVerzonden', 'contractHerMailFout', err);
+        }
+        await ref.update({ [field]: admin.firestore.FieldValue.delete() });
+      }
+    }
+
     // 3. just signed: the contract with the PDF
     if(before.status === 'klaar_voor_ondertekening' && d.status === 'voltooid' && d.email){
       if(await claimMail(ref, 'contractMailVerzonden')){
         try{
           const pdf = await renderSignedContractPdf(d);
-          const filename = `Stallingscontract_${d.achternaam || ''}_${d.voornaam || ''}.pdf`.replace(/\s+/g, '_');
+          const filename = contractFilename(d);
           await sendMail({
             to: d.email,
             subject: 'Uw ondertekende stallingscontract — Zwartendijk Stalling',
