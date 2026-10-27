@@ -580,6 +580,8 @@ async function renderSignedContractPdf(d){
     appendTextPage(doc, 'Bijlage: administratieve aantekening', notes);
   }
   if(isFoto) appendScanPage(doc, d.handtekening);
+  // photos added later to a signed contract in the contract program
+  if(d.extraScans) appendScanPage(doc, d.extraScans);
   return Buffer.from(doc.output('arraybuffer'));
 }
 function contractFilename(d){
