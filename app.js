@@ -6823,8 +6823,15 @@
   }
 
   function jumpToSpot(warehouseId, spotId){
+    // the search box is also on the Planning, Agenda and Klanten pages (and
+    // the app reopens on the last page used): go back to the floor plan,
+    // with every bay visible, before looking for the bay
+    showOverview = showAgenda = showPlanning = showNieuweKlanten = showWinterstalling = showKlanten = false;
+    planFilter = 'alles';
+    if(typeof closeMobileSheet === 'function') closeMobileSheet();
     state.activeWarehouseId = warehouseId;
     render();
+    saveUiState();
     document.getElementById('searchResults').classList.remove('show');
     document.getElementById('searchInput').value = '';
     setTimeout(() => {
