@@ -696,7 +696,8 @@ Heeft u vragen? Beantwoord deze e-mail of bel ons gerust.`,
     }
 
     // 3. just signed: the contract with the PDF
-    if(before.status === 'klaar_voor_ondertekening' && d.status === 'voltooid' && d.email){
+    // (not when staff added a paper-signed contract and chose not to mail it)
+    if(before.status === 'klaar_voor_ondertekening' && d.status === 'voltooid' && d.email && !d.geenContractMail){
       if(await claimMail(ref, 'contractMailVerzonden')){
         try{
           const pdf = await renderSignedContractPdf(d);
