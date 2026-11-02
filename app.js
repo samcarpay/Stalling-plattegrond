@@ -91,6 +91,7 @@
     // Klanten die tijdelijk van hun plek zijn gehaald om te kunnen schuiven
     // (bijv. bij een volle loods) — zie parkOccupant() en "Geparkeerd" bij Klanten.
     if(!Array.isArray(loaded.parked)) loaded.parked = [];
+    if(!loaded.bootOpbok || typeof loaded.bootOpbok !== 'object' || Array.isArray(loaded.bootOpbok)) loaded.bootOpbok = {};
     Object.values(loaded.vehicleTypes).forEach(t => {
       if(typeof t.price !== 'number') t.price = 0;
       if(typeof t.period !== 'string') t.period = 'jaar';
@@ -547,7 +548,7 @@
     showPlanning = false;
     showOverview = false;
     showNieuweKlanten = false;
-    showWinterstalling = false;
+    showWinterstalling = false; showBoten = false;
     showKlanten = false;
     render();
   }
@@ -557,7 +558,7 @@
     showAgenda = false;
     showOverview = false;
     showNieuweKlanten = false;
-    showWinterstalling = false;
+    showWinterstalling = false; showBoten = false;
     showKlanten = false;
     render();
   }
@@ -633,6 +634,7 @@
   let showNieuweKlanten = false; // UI-only, not persisted
   let showWinterstalling = false; // UI-only, not persisted
   let showKlanten = false; // UI-only, not persisted
+  let showBoten = false;   // '⚓ Boten op de kant' page — UI-only, not persisted
 
   function initNieuweKlantenSync(){
     if(!hasFirebaseSync || typeof NIEUWE_KLANTEN_ENABLED === 'undefined' || !NIEUWE_KLANTEN_ENABLED || !firebase.firestore) return;
@@ -1051,7 +1053,7 @@
   let uiRestored = false;
   function uiPageKey(){
     return showPlanning ? 'planning' : showAgenda ? 'agenda' : showKlanten ? 'klanten' : showOverview ? 'overzicht'
-      : showWinterstalling ? 'winter' : showNieuweKlanten ? 'nieuw' : 'plattegrond';
+      : showWinterstalling ? 'winter' : showNieuweKlanten ? 'nieuw' : showBoten ? 'boten' : 'plattegrond';
   }
   function saveUiState(){
     try{
@@ -1071,6 +1073,7 @@
     else if(s.page === 'klanten') showKlanten = true;
     else if(s.page === 'overzicht') showOverview = true;
     else if(s.page === 'winter') showWinterstalling = true;
+    else if(s.page === 'boten') showBoten = true;
   }
 
   function render(){
@@ -1096,6 +1099,12 @@
       document.getElementById('legend').innerHTML = '';
       document.getElementById('whPurpose').innerHTML = '';
       renderNieuweKlantenPage();
+    } else if(showBoten){
+      document.getElementById('stats').innerHTML = '';
+      document.getElementById('globalStatLine').innerHTML = '';
+      document.getElementById('legend').innerHTML = '';
+      document.getElementById('whPurpose').innerHTML = '';
+      renderBotenPage();
     } else if(showWinterstalling){
       document.getElementById('stats').innerHTML = '';
       document.getElementById('globalStatLine').innerHTML = '';
@@ -3918,6 +3927,318 @@
     });
   }
 
+  // ---------- ⚓ Boten op de kant ----------
+  // How each boat stands on land in winter: the wood under the keel/hull,
+  // the stands (bokken), distances and heights — so it doesn't have to be
+  // worked out again every year. Stored per boat in state.bootOpbok, keyed by
+  // object number (or name), so it stays with the boat whichever bay it's in.
+  // Blocks, stands and history are objects keyed by id, so the three-way
+  // sync merge handles edits from two devices.
+  // numbers are fine too (escapeHtml only takes text)
+  const btEsc = v => escapeHtml(String(v == null ? '' : v));
+  let botenSelectedKey = null;
+  let botenSearch = '';
+
+  function bootKeyOf(o){
+    const n = normObjNum(o.objectNummer);
+    return n ? 'obj:' + n : 'naam:' + String(o.name || '').trim().toLowerCase();
+  }
+  function isBoatSpot(w, spot){
+    const t = TYPES[spot.type];
+    return (t && /boot|sloep|boat/i.test(t.label || '')) || /boten|boot/i.test(w.name || '');
+  }
+  // every boat in the app (one entry per boat, with all bays it's in)
+  function bootList(){
+    const map = {};
+    state.warehouses.forEach(w => {
+      warehouseSides(w).forEach(([key, tagPrefix]) => {
+        (w[key] || []).forEach(row => row.spots.forEach(spot => {
+          if(spot.removed || spot.isDoor || !isBoatSpot(w, spot)) return;
+          (spot.occupants || []).forEach(o => {
+            if(!o.name && !o.objectNummer) return;
+            const k = bootKeyOf(o);
+            if(!map[k]) map[k] = { key: k, name: o.name || '', obj: o.objectNummer || '', spotLength: spot.length || 0, places: [] };
+            map[k].places.push({ warehouse: w, spot, tag: displayTag(spot, tagPrefix) });
+          });
+        }));
+      });
+    });
+    // details kept for a boat that isn't in a bay right now
+    Object.entries(state.bootOpbok || {}).forEach(([k, e]) => {
+      if(!map[k] && e) map[k] = { key: k, name: e.naam || '', obj: e.obj || '', spotLength: 0, places: [] };
+    });
+    return Object.values(map).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'nl'));
+  }
+  function bootHasSetup(e){
+    return !!e && (Object.keys(e.blokken || {}).length > 0 || Object.keys(e.bokken || {}).length > 0);
+  }
+  function bootEntry(b){
+    if(!state.bootOpbok) state.bootOpbok = {};
+    let e = state.bootOpbok[b.key];
+    if(!e){
+      e = { naam: b.name, obj: b.obj, type: '', lengte: b.spotLength || '', breedte: '', diepgang: '', gewicht: '', kiellengte: '',
+            plek: '', richting: '', blokken: {}, bokken: {}, notitie: '', historie: {} };
+      state.bootOpbok[b.key] = e;
+    }
+    e.naam = b.name || e.naam; e.obj = b.obj || e.obj;
+    return e;
+  }
+  const btNum = v => { const n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isFinite(n) ? n : 0; };
+  const btFmt = (n, d = 2) => (Math.round(n * 100) / 100).toLocaleString('nl-NL', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const btSorted = obj => Object.entries(obj || {}).map(([id, v]) => ({ id, ...v })).sort((a, b) => btNum(a.pos) - btNum(b.pos) || String(a.kant || '').localeCompare(String(b.kant || '')));
+  function btGaps(list){
+    const pos = [...new Set(list.map(x => Math.round(btNum(x.pos) * 100) / 100))].sort((a, b) => a - b);
+    return pos.length > 1 ? pos.slice(1).map((p, i) => Math.round((p - pos[i]) * 100) / 100) : [];
+  }
+  // typing a distance: re-space evenly from the one nearest the stern
+  // (a BB+SB pair of stands at the same spot stays together)
+  function btRespace(obj, gap){
+    const pos = [...new Set(Object.values(obj).map(x => Math.round(btNum(x.pos) * 100) / 100))].sort((a, b) => a - b);
+    if(pos.length < 2 || !(gap > 0)) return;
+    const map = {}; pos.forEach((p, i) => { map[p] = Math.round((pos[0] + i * gap) * 100) / 100; });
+    Object.values(obj).forEach(x => { x.pos = map[Math.round(btNum(x.pos) * 100) / 100]; });
+  }
+
+  function bootDiagramSvg(e){
+    const W = 760, H = 250, padL = 40, padR = 40, ground = 205;
+    const L = Math.max(btNum(e.lengte), 1), scale = (W - padL - padR) / L;
+    const x = m => padL + (L - m) * scale; // stern (0 m) right, bow left
+    const blocks = btSorted(e.blokken), stands = btSorted(e.bokken);
+    const maxBlock = Math.max(0, ...blocks.map(k => btNum(k.hoogte))) || 25;
+    const keelBottom = ground - maxBlock * 0.9;
+    const hull = `M ${x(L)} ${keelBottom-110} Q ${x(L*0.92)} ${keelBottom-40} ${x(L*0.75)} ${keelBottom-28} L ${x(L*0.08)} ${keelBottom-30} Q ${x(0)} ${keelBottom-40} ${x(0)} ${keelBottom-95} L ${x(L)} ${keelBottom-110} Z`;
+    const bp = blocks.map(k => btNum(k.pos));
+    const mid = bp.length ? (Math.min(...bp) + Math.max(...bp)) / 2 : L / 2;
+    const kl = btNum(e.kiellengte);
+    const keel = kl > 0 ? `<rect x="${x(mid + kl / 2)}" y="${keelBottom-30}" width="${kl*scale}" height="30" fill="#2E5E8C" opacity=".85" rx="3"/>` : '';
+    const blockSvg = blocks.map((k, i) => {
+      const h = btNum(k.hoogte) * 0.9;
+      return `<rect x="${x(btNum(k.pos))-14}" y="${ground-h}" width="28" height="${h}" fill="#A0703C" rx="2"/>
+        <text x="${x(btNum(k.pos))}" y="${ground+16}" text-anchor="middle" font-size="12" fill="#A0703C" font-weight="700">H${i+1} · ${btEsc(k.hoogte)} cm</text>`;
+    }).join('');
+    const seen = {};
+    const standSvg = stands.map(st => {
+      const k = btNum(st.pos).toFixed(2); if(seen[k]) return ''; seen[k] = 1;
+      const top = ground - btNum(st.hoogte) * 0.75, px = x(btNum(st.pos));
+      return `<line x1="${px}" y1="${ground}" x2="${px}" y2="${top}" stroke="#B54834" stroke-width="4"/>
+        <path d="M ${px-16} ${ground} L ${px} ${ground-26} L ${px+16} ${ground}" fill="none" stroke="#B54834" stroke-width="3"/>
+        <rect x="${px-10}" y="${top-5}" width="20" height="6" fill="#B54834" rx="2"/>
+        <text x="${px}" y="${top-12}" text-anchor="middle" font-size="12" fill="#B54834" font-weight="700">${btEsc(st.hoogte)} cm</text>`;
+    }).join('');
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Zijaanzicht van de boot op de kant">
+      <path d="${hull}" fill="#DCE6F0" stroke="#2E5E8C" stroke-width="2"/>${keel}${blockSvg}${standSvg}
+      <line x1="10" y1="${ground}" x2="${W-10}" y2="${ground}" stroke="#9a9a94" stroke-width="2"/>
+      <text x="${x(L)}" y="${H-6}" text-anchor="middle" font-size="12" fill="#5C5C5C">boeg</text>
+      <text x="${x(0)}" y="${H-6}" text-anchor="middle" font-size="12" fill="#5C5C5C">achtersteven (0 m)</text>
+      <text x="${W/2}" y="${H-6}" text-anchor="middle" font-size="12" fill="#5C5C5C">${btFmt(L)} m</text></svg>`;
+  }
+
+  function openBotenPage(key){
+    showBoten = true;
+    showOverview = showAgenda = showPlanning = showNieuweKlanten = showWinterstalling = showKlanten = false;
+    if(key) botenSelectedKey = key;
+    if(typeof closeMobileSheet === 'function') closeMobileSheet();
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function renderBotenPage(){
+    const wrap = document.getElementById('plan');
+    wrap.innerHTML = '';
+    const all = bootList();
+    if(!botenSelectedKey || !all.some(b => b.key === botenSelectedKey)) botenSelectedKey = all[0] ? all[0].key : null;
+    const q = botenSearch.trim().toLowerCase();
+    const shown = q ? all.filter(b => [b.name, b.obj, ...b.places.map(p => p.warehouse.name + ' ' + p.tag)].join(' ').toLowerCase().includes(q)) : all;
+
+    const page = document.createElement('div');
+    page.className = 'bt-page';
+    page.innerHTML = `
+      <h2 class="bt-title">⚓ Boten op de kant</h2>
+      <p class="bt-sub">Hoe elke boot op het terrein staat: hout, bokken en afstanden. Zo hoeven jullie niet elk jaar opnieuw te meten.</p>
+      <input type="text" class="bt-search" placeholder="Zoek een boot, eigenaar of objectnummer…" value="${btEsc(botenSearch)}">
+      <div class="bt-layout"><div class="bt-list"></div><div class="bt-panel"></div></div>`;
+    wrap.appendChild(page);
+    const searchEl = page.querySelector('.bt-search');
+    searchEl.addEventListener('input', () => { botenSearch = searchEl.value; const pos = searchEl.selectionStart; renderBotenPage(); const n = document.querySelector('.bt-search'); n.focus(); n.setSelectionRange(pos, pos); });
+
+    const listEl = page.querySelector('.bt-list');
+    listEl.innerHTML = shown.length ? shown.map(b => {
+      const e = state.bootOpbok && state.bootOpbok[b.key];
+      const nb = e ? Object.keys(e.blokken || {}).length : 0, ns = e ? Object.keys(e.bokken || {}).length : 0;
+      return `<div class="bt-card${b.key === botenSelectedKey ? ' on' : ''}" data-key="${btEsc(b.key)}">
+        <div class="bt-n">${btEsc(b.name || 'Naam onbekend')}</div>
+        <div class="bt-m">${btEsc([b.obj, e && e.lengte ? btFmt(btNum(e.lengte)) + ' m' : ''].filter(Boolean).join(' · '))}</div>
+        <div class="bt-m">${b.places.length ? btEsc(b.places.map(p => p.warehouse.name + ' · ' + p.tag).join(', ')) : '<em>niet op een plek</em>'}</div>
+        ${bootHasSetup(e) ? `<span class="bt-pill">${nb} blok${nb === 1 ? '' : 'ken'} · ${ns} bok${ns === 1 ? '' : 'ken'}</span>` : '<span class="bt-pill warn">Opbokgegevens nog invullen</span>'}
+      </div>`;
+    }).join('') : '<div class="bt-m" style="padding:8px;">Geen boten gevonden.</div>';
+    listEl.querySelectorAll('[data-key]').forEach(c => c.addEventListener('click', () => {
+      botenSelectedKey = c.getAttribute('data-key');
+      renderBotenPage();
+      if(isPhoneLayout()) document.querySelector('.bt-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
+
+    const b = all.find(x => x.key === botenSelectedKey);
+    const panel = page.querySelector('.bt-panel');
+    if(!b){ panel.innerHTML = '<div class="bt-m">Er staan nog geen boten in de app.</div>'; return; }
+    const e = (state.bootOpbok && state.bootOpbok[b.key]) || null;
+    const v = e || { lengte: b.spotLength || '', blokken: {}, bokken: {}, historie: {} };
+    const blocks = btSorted(v.blokken), stands = btSorted(v.bokken);
+    const gapField = (label, list, which) => {
+      const g = btGaps(list);
+      if(!g.length) return `<div class="bt-fact">${label}<br><b>—</b></div>`;
+      const same = g.every(x => x === g[0]);
+      return `<div class="bt-fact">${label}<br><input class="bt-gap" type="number" inputmode="decimal" step="0.05" min="0.1" value="${same ? g[0] : ''}" placeholder="${same ? '' : 'verschillend'}" data-gap="${which}"> m
+        ${same ? '' : `<div class="bt-m">nu: ${g.map(x => btFmt(x)).join(' · ')}</div>`}</div>`;
+    };
+    const hist = Object.values(v.historie || {}).sort((a, c) => String(c.op).localeCompare(String(a.op)));
+    const num = (f, step, label, unit) => `<div><label>${label}${unit ? ' (' + unit + ')' : ''}</label><input type="number" inputmode="decimal" step="${step}" value="${btEsc(v[f] == null ? '' : v[f])}" data-f="${f}"></div>`;
+    const txt = (f, label, ph) => `<div><label>${label}</label><input type="text" value="${btEsc(v[f] || '')}" placeholder="${btEsc(ph || '')}" data-f="${f}"></div>`;
+    panel.innerHTML = `
+      <div class="bt-head">
+        <div><h3>${btEsc(b.name || 'Naam onbekend')}</h3>
+        <div class="bt-m">${btEsc([b.obj ? 'object ' + b.obj : '', b.places.map(p => p.warehouse.name + ' · plek ' + p.tag).join(', ')].filter(Boolean).join(' · '))}</div></div>
+      </div>
+      <div class="bt-sec"><h4>Zo staat hij op de kant</h4>
+        <div class="bt-diagram">${bootDiagramSvg(v)}</div>
+        <div class="bt-legend"><span><i style="background:#A0703C"></i>hout onder kiel/bodem</span><span><i style="background:#B54834"></i>bokken</span><span><i style="background:#2E5E8C"></i>kiel</span></div>
+        <div class="bt-facts">
+          ${gapField('Tussen de bokken', stands, 'bokken')}
+          ${gapField('Tussen de blokken', blocks, 'blokken')}
+          <div class="bt-fact">Ruimte nodig (l × b)<br><b>${btNum(v.lengte) ? btFmt(btNum(v.lengte) + 1) : '—'} × ${btNum(v.breedte) ? btFmt(btNum(v.breedte) + 1.2) : '—'} m</b></div>
+        </div>
+      </div>
+      <div class="bt-sec"><h4>Boot</h4>
+        <div class="bt-grid">
+          ${txt('type', 'Soort boot', 'bijv. zeilboot met kiel')}
+          ${num('lengte', '0.05', 'Lengte over alles', 'm')}
+          ${num('breedte', '0.05', 'Breedte', 'm')}
+          ${num('diepgang', '0.05', 'Diepgang', 'm')}
+          ${num('gewicht', '50', 'Gewicht', 'kg')}
+          ${num('kiellengte', '0.05', 'Lengte kiel', 'm')}
+          ${txt('plek', 'Plek op het terrein', 'bijv. buiten, rij B, plek 3')}
+          ${txt('richting', 'Richting', 'bijv. boeg richting het hek')}
+        </div>
+      </div>
+      <div class="bt-sec"><h4>Hout onder de kiel / bodem</h4>
+        <div class="bt-tablewrap"><table class="bt-table"><thead><tr><th></th><th>Vanaf achtersteven (m)</th><th>Hoogte (cm)</th><th>Opbouw</th><th></th></tr></thead><tbody>
+          ${blocks.map((k, i) => `<tr><td>H${i+1}</td>
+            <td><input type="number" inputmode="decimal" step="0.05" value="${btEsc(k.pos)}" data-item="blokken.${k.id}.pos"></td>
+            <td><input type="number" inputmode="decimal" step="1" value="${btEsc(k.hoogte)}" data-item="blokken.${k.id}.hoogte"></td>
+            <td><input type="text" value="${btEsc(k.opbouw || '')}" placeholder="bijv. 2 balken 12 cm + plank" data-item="blokken.${k.id}.opbouw"></td>
+            <td class="bt-x" data-del="blokken.${k.id}" title="Verwijderen">✕</td></tr>`).join('') || '<tr><td colspan="5" class="bt-m">Nog geen blokken.</td></tr>'}
+        </tbody></table></div>
+        <button type="button" class="btn ghost small" data-add="blokken">+ Blok toevoegen</button>
+      </div>
+      <div class="bt-sec"><h4>Bokken</h4>
+        <div class="bt-tablewrap"><table class="bt-table"><thead><tr><th></th><th>Kant</th><th>Vanaf achtersteven (m)</th><th>Hoogte (cm)</th><th>Stand / gat</th><th></th></tr></thead><tbody>
+          ${stands.map((st, i) => `<tr><td>B${i+1}</td>
+            <td><select data-item="bokken.${st.id}.kant"><option ${st.kant === 'BB' ? 'selected' : ''}>BB</option><option ${st.kant === 'SB' ? 'selected' : ''}>SB</option></select></td>
+            <td><input type="number" inputmode="decimal" step="0.05" value="${btEsc(st.pos)}" data-item="bokken.${st.id}.pos"></td>
+            <td><input type="number" inputmode="decimal" step="1" value="${btEsc(st.hoogte)}" data-item="bokken.${st.id}.hoogte"></td>
+            <td><input type="text" value="${btEsc(st.stand || '')}" placeholder="bijv. gat 5" data-item="bokken.${st.id}.stand"></td>
+            <td class="bt-x" data-del="bokken.${st.id}" title="Verwijderen">✕</td></tr>`).join('') || '<tr><td colspan="6" class="bt-m">Nog geen bokken.</td></tr>'}
+        </tbody></table></div>
+        <button type="button" class="btn ghost small" data-add="bokken">+ Bok toevoegen</button>
+        <button type="button" class="btn ghost small" data-add="bokpaar">+ Paar bokken (BB + SB)</button>
+      </div>
+      <div class="bt-sec"><h4>Opmerkingen</h4>
+        <textarea rows="3" data-f="notitie" placeholder="bijv. achterste blok 10 cm vóór einde kiel, bokken met ketting vast">${btEsc(v.notitie || '')}</textarea>
+      </div>
+      <div class="bt-sec"><h4>Geschiedenis</h4>
+        ${hist.length ? `<ul class="bt-hist">${hist.map(h => `<li>${btEsc(formatDutchDate(h.op))} — ${btEsc(h.actie)}</li>`).join('')}</ul>` : '<div class="bt-m">Nog niets bijgehouden.</div>'}
+        <div class="bt-actions">
+          <button type="button" class="btn ghost small" data-hist="opgebokt">✓ Vandaag op de kant gezet</button>
+          <button type="button" class="btn ghost small" data-hist="teruggezet">✓ Vandaag terug in het water</button>
+        </div>
+      </div>
+      <div class="bt-actions">
+        <button type="button" class="btn" data-print>Werkbriefje afdrukken</button>
+        ${b.places.map((p, i) => `<button type="button" class="btn ghost" data-goto="${i}">Naar plek ${btEsc(p.warehouse.name + ' · ' + p.tag)}</button>`).join('')}
+      </div>`;
+
+    const touch = () => { const en = bootEntry(b); en.updatedAt = Date.now(); return en; };
+    const done = () => { save(); renderBotenPage(); };
+    panel.querySelectorAll('[data-f]').forEach(el => el.addEventListener('change', () => {
+      const en = touch(); const f = el.getAttribute('data-f');
+      en[f] = el.type === 'number' ? (el.value === '' ? '' : btNum(el.value)) : el.value;
+      done();
+    }));
+    panel.querySelectorAll('[data-item]').forEach(el => el.addEventListener('change', () => {
+      const en = touch(); const [list, id, f] = el.getAttribute('data-item').split('.');
+      if(!en[list][id]) return;
+      const newVal = el.type === 'number' ? btNum(el.value) : el.value;
+      // a stand pair (BB + SB at the same spot) moves together
+      if(list === 'bokken' && f === 'pos'){
+        const old = btNum(en.bokken[id].pos);
+        const partner = Object.entries(en.bokken).find(([oid, o]) => oid !== id && btNum(o.pos) === old && o.kant !== en.bokken[id].kant);
+        if(partner) partner[1].pos = newVal;
+      }
+      en[list][id][f] = newVal;
+      done();
+    }));
+    panel.querySelectorAll('[data-gap]').forEach(el => el.addEventListener('change', () => {
+      const en = touch(); btRespace(en[el.getAttribute('data-gap')], btNum(el.value)); done();
+    }));
+    panel.querySelectorAll('[data-del]').forEach(el => el.addEventListener('click', () => {
+      const en = touch(); const [list, id] = el.getAttribute('data-del').split('.');
+      delete en[list][id]; done();
+    }));
+    panel.querySelectorAll('[data-add]').forEach(el => el.addEventListener('click', () => {
+      const en = touch(); const what = el.getAttribute('data-add'); const L = btNum(en.lengte) || 6;
+      // a new one goes to a free spot: a bit further towards the bow than the last one
+      const nextPos = (obj, start, step) => {
+        const pos = Object.values(obj).map(o => btNum(o.pos));
+        const p = pos.length ? Math.max(...pos) + step : start;
+        return Math.round(Math.min(p, Math.max(L - 0.3, 0.3)) * 100) / 100;
+      };
+      if(what === 'blokken') en.blokken[uid()] = { pos: nextPos(en.blokken, L * 0.35, 1.5), hoogte: 25, opbouw: '' };
+      else if(what === 'bokken') en.bokken[uid()] = { kant: 'BB', pos: nextPos(en.bokken, L * 0.25, Math.max(1, L * 0.4)), hoogte: 100, stand: '' };
+      else { const pos = nextPos(en.bokken, L * 0.25, Math.max(1, L * 0.4)); en.bokken[uid()] = { kant: 'BB', pos, hoogte: 100, stand: '' }; en.bokken[uid()] = { kant: 'SB', pos, hoogte: 100, stand: '' }; }
+      done();
+    }));
+    panel.querySelectorAll('[data-hist]').forEach(el => el.addEventListener('click', () => {
+      const en = touch(); if(!en.historie) en.historie = {};
+      const today = new Date(); const iso = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+      en.historie[uid()] = { op: iso, actie: el.getAttribute('data-hist') === 'opgebokt' ? 'op de kant gezet' : 'terug in het water' };
+      done();
+    }));
+    panel.querySelectorAll('[data-goto]').forEach(el => el.addEventListener('click', () => {
+      const p = b.places[+el.getAttribute('data-goto')];
+      jumpToSpot(p.warehouse.id, p.spot.id);
+    }));
+    panel.querySelector('[data-print]').addEventListener('click', () => {
+      const row = (cells) => `<tr>${cells.map(c => `<td style="border:1px solid #999;padding:4px 6px;">${btEsc(c)}</td>`).join('')}</tr>`;
+      document.getElementById('printReport').innerHTML = `<div class="print-report" style="font-family:Arial,sans-serif;">
+        <h2 style="margin:0 0 4px;">Opbokken: ${btEsc(b.name || '')}</h2>
+        <div style="margin-bottom:8px;">${btEsc([b.obj ? 'object ' + b.obj : '', v.type, v.lengte ? 'lengte ' + btFmt(btNum(v.lengte)) + ' m' : '', v.breedte ? 'breedte ' + btFmt(btNum(v.breedte)) + ' m' : '', v.gewicht ? v.gewicht + ' kg' : ''].filter(Boolean).join(' · '))}</div>
+        <div style="margin-bottom:8px;">${btEsc([v.plek, v.richting].filter(Boolean).join(' · '))}</div>
+        ${bootDiagramSvg(v)}
+        <h3>Hout onder de kiel / bodem</h3>
+        <table style="border-collapse:collapse;width:100%;">${row(['', 'Vanaf achtersteven (m)', 'Hoogte (cm)', 'Opbouw'])}${blocks.map((k, i) => row(['H' + (i+1), btFmt(btNum(k.pos)), String(k.hoogte), k.opbouw || ''])).join('')}</table>
+        <h3>Bokken</h3>
+        <table style="border-collapse:collapse;width:100%;">${row(['', 'Kant', 'Vanaf achtersteven (m)', 'Hoogte (cm)', 'Stand / gat'])}${stands.map((st, i) => row(['B' + (i+1), st.kant || '', btFmt(btNum(st.pos)), String(st.hoogte), st.stand || ''])).join('')}</table>
+        ${v.notitie ? `<h3>Opmerkingen</h3><p>${btEsc(v.notitie)}</p>` : ''}
+      </div>`;
+      window.print();
+    });
+  }
+
+  // from a boat's bay: "⚓ Opbokgegevens"
+  function bootButtonHtml(w, spot, attr){
+    if(!isBoatSpot(w, spot) || !(spot.occupants || []).some(o => o.name || o.objectNummer)) return '';
+    return `<button type="button" class="${attr === 'sheet' ? 'ss-btn wide' : 'btn ghost'}" data-boot-opbok>⚓ Opbokgegevens</button>`;
+  }
+  function bindBootButton(container, spot, before){
+    const btn = container.querySelector('[data-boot-opbok]');
+    if(!btn) return;
+    btn.addEventListener('click', () => {
+      if(before) before();
+      const o = (spot.occupants || []).find(x => x.name || x.objectNummer);
+      openBotenPage(bootKeyOf(o));
+    });
+  }
+
   function renderWinterstallingPage(){
     const wrap = document.getElementById('plan');
     wrap.innerHTML = '';
@@ -4002,7 +4323,7 @@
       jumpBtn.className = 'btn ghost small';
       jumpBtn.textContent = 'Open plek';
       jumpBtn.addEventListener('click', () => {
-        showWinterstalling = false;
+        showWinterstalling = false; showBoten = false;
         showKlanten = false;
         state.activeWarehouseId = r.warehouse.id;
         render();
@@ -4448,7 +4769,7 @@
     const agendaTab = findTopTab('Agenda');
     if(agendaTab) items.push({ key:'agenda', label:'Agenda', badge: (agendaTab.querySelector('.wh-count')?.textContent || '').match(/^\d+/)?.[0] });
     items.push({ key:'klanten', label:'Klanten' }, { key:'meer', label:'Meer' });
-    const anyPage = showAgenda || showPlanning || showKlanten || showOverview || showWinterstalling || showNieuweKlanten;
+    const anyPage = showAgenda || showPlanning || showKlanten || showOverview || showWinterstalling || showNieuweKlanten || showBoten;
     const activeKey = showPlanning ? 'planning' : showAgenda ? 'agenda' : showKlanten ? 'klanten' : anyPage ? 'meer' : 'plattegrond';
     nav.innerHTML = items.map(it => `<button type="button" class="bn-item${it.key === activeKey ? ' on' : ''}" data-nav="${it.key}">${NAV_ICONS[it.key]}<span>${it.label}</span>${it.badge ? `<b>${escapeHtml(it.badge)}</b>` : ''}</button>`).join('');
     nav.querySelectorAll('[data-nav]').forEach(btn => btn.addEventListener('click', () => {
@@ -4553,6 +4874,7 @@
       ${occHtml}
       ${appts.length ? `<div class="ss-appt"><span>Ophalen ${escapeHtml(formatApptWhen(appts[0]))}${apptNeedsConfirm(appts[0]) ? '<em>nog bevestigen</em>' : ''}</span><span class="ss-appt-acts">${apptNeedsConfirm(appts[0]) ? '<button type="button" class="ss-mini" data-ss-confirm>Bevestigen</button>' : ''}<button type="button" class="ss-mini${appts[0].readyAt ? ' on' : ''}" data-ss-ready>${appts[0].readyAt ? '✓ Klaar' : 'Klaarzetten'}</button></span></div>` : ''}
       <div class="ss-lines">${neighbour(nb(rIdx + 1), 'Achter deze plek')}${neighbour(nb(rIdx - 1), 'Voor deze plek')}</div>
+      ${bootButtonHtml(w, spot, 'sheet')}
       <button type="button" class="ss-btn wide" data-ss-edit>Bewerk plek${multi ? ' en voertuigen' : ''}</button>`;
     openMobileSheet(html, (sheet) => {
       sheet.querySelectorAll('[data-ss-away]').forEach(b => b.addEventListener('click', () => {
@@ -4574,6 +4896,7 @@
         closeMobileSheet();
         openMoveOneOccupantSearchModal(spot, +b.getAttribute('data-ss-move'));
       }));
+      bindBootButton(sheet, spot, closeMobileSheet);
       sheet.querySelector('[data-ss-edit]').addEventListener('click', () => {
         closeMobileSheet();
         openSpotModal(row, spot, sideName, rowIdx, sIdx, tagPrefix);
@@ -4619,7 +4942,7 @@
         showPlanning = false;
         showOverview = false;
         showNieuweKlanten = false;
-        showWinterstalling = false;
+        showWinterstalling = false; showBoten = false;
         showKlanten = false;
         render();
       });
@@ -4633,7 +4956,7 @@
         showAgenda = false;
         showOverview = false;
         showNieuweKlanten = false;
-        showWinterstalling = false;
+        showWinterstalling = false; showBoten = false;
         showKlanten = false;
         render();
       });
@@ -4649,7 +4972,7 @@
         showOverview = false;
         showAgenda = false;
         showPlanning = false;
-        showWinterstalling = false;
+        showWinterstalling = false; showBoten = false;
         showKlanten = false;
         render();
       });
@@ -4664,6 +4987,7 @@
       winterTab.innerHTML = `<span class="wh-tab-name-text">❄️ Winterstalling</span>` + (winterCount ? `<span class="wh-count">${winterCount}</span>` : '');
       winterTab.addEventListener('click', () => {
         showWinterstalling = true;
+        showBoten = false;
         showOverview = false;
         showAgenda = false;
         showPlanning = false;
@@ -4672,6 +4996,16 @@
         render();
       });
       el.appendChild(winterTab);
+    }
+
+    const botenList = bootList();
+    if(botenList.length){
+      const todo = botenList.filter(b => !bootHasSetup(state.bootOpbok && state.bootOpbok[b.key])).length;
+      const botenTab = document.createElement('div');
+      botenTab.className = 'wh-tab' + (showBoten ? ' active' : '');
+      botenTab.innerHTML = `<span class="wh-tab-name-text">⚓ Boten op de kant</span>` + (todo ? `<span class="wh-count">${todo} in te vullen</span>` : '');
+      botenTab.addEventListener('click', () => openBotenPage(null));
+      el.appendChild(botenTab);
     }
 
     const klantenTab = document.createElement('div');
@@ -4684,7 +5018,7 @@
       showAgenda = false;
       showPlanning = false;
       showNieuweKlanten = false;
-      showWinterstalling = false;
+      showWinterstalling = false; showBoten = false;
       render();
     });
     el.appendChild(klantenTab);
@@ -4697,7 +5031,7 @@
       showAgenda = false;
       showPlanning = false;
       showNieuweKlanten = false;
-      showWinterstalling = false;
+      showWinterstalling = false; showBoten = false;
       showKlanten = false;
       render();
     });
@@ -4710,7 +5044,7 @@
       const spots = warehouseSpots(w);
       const occ = spots.filter(s => s.occupants && s.occupants.length > 0).length;
       const tab = document.createElement('div');
-      tab.className = 'wh-tab' + (!showOverview && !showAgenda && !showPlanning && !showNieuweKlanten && !showWinterstalling && !showKlanten && w.id === state.activeWarehouseId ? ' active' : '');
+      tab.className = 'wh-tab' + (!showOverview && !showAgenda && !showPlanning && !showNieuweKlanten && !showWinterstalling && !showKlanten && !showBoten && w.id === state.activeWarehouseId ? ' active' : '');
       const atStart = whIdx === 0;
       const atEnd = whIdx === state.warehouses.length - 1;
       tab.innerHTML = `
@@ -4727,7 +5061,7 @@
         showAgenda = false;
         showPlanning = false;
         showNieuweKlanten = false;
-        showWinterstalling = false;
+        showWinterstalling = false; showBoten = false;
         showKlanten = false;
         state.activeWarehouseId = w.id;
         render();
@@ -5716,6 +6050,7 @@
       </div>
       <div class="modal-actions">
         ${isEditing ? '<button class="btn danger" id="clearBtn">Plek leegmaken</button>' : `<button class="btn ghost" id="noSpotBtn" data-remove-spot="${spot.id}">Geen plek hier</button>`}
+        ${isEditing ? bootButtonHtml(activeWarehouse(), spot, 'modal') : ''}
         <button class="btn ghost" id="cancelBtn">Annuleren</button>
         <button class="btn" id="saveBtn">Opslaan</button>
       </div>
@@ -5817,6 +6152,7 @@
 
     document.getElementById('cancelBtn').addEventListener('click', closeModal);
     overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); }, { once:true });
+    bindBootButton(body, spot, closeModal);
 
     if(isEditing){
       document.getElementById('clearBtn').addEventListener('click', () => {
@@ -6826,7 +7162,7 @@
     // the search box is also on the Planning, Agenda and Klanten pages (and
     // the app reopens on the last page used): go back to the floor plan,
     // with every bay visible, before looking for the bay
-    showOverview = showAgenda = showPlanning = showNieuweKlanten = showWinterstalling = showKlanten = false;
+    showOverview = showAgenda = showPlanning = showNieuweKlanten = showWinterstalling = showKlanten = showBoten = false;
     planFilter = 'alles';
     if(typeof closeMobileSheet === 'function') closeMobileSheet();
     state.activeWarehouseId = warehouseId;
