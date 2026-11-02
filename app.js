@@ -4069,7 +4069,8 @@
         <div class="bt-n">${btEsc(b.name || 'Naam onbekend')}</div>
         <div class="bt-m">${btEsc([b.obj, e && e.lengte ? btFmt(btNum(e.lengte)) + ' m' : ''].filter(Boolean).join(' · '))}</div>
         <div class="bt-m">${b.places.length ? btEsc(b.places.map(p => p.warehouse.name + ' · ' + p.tag).join(', ')) : '<em>niet op een plek</em>'}</div>
-        ${bootHasSetup(e) ? `<span class="bt-pill">${nb} blok${nb === 1 ? '' : 'ken'} · ${ns} bok${ns === 1 ? '' : 'ken'}</span>` : '<span class="bt-pill warn">Opbokgegevens nog invullen</span>'}
+        ${e && e.geenOpbok ? '<span class="bt-pill none">Geen opbokgegevens nodig</span>'
+          : bootHasSetup(e) ? `<span class="bt-pill">${nb} blok${nb === 1 ? '' : 'ken'} · ${ns} bok${ns === 1 ? '' : 'ken'}</span>` : '<span class="bt-pill warn">Opbokgegevens nog invullen</span>'}
       </div>`;
     }).join('') : '<div class="bt-m" style="padding:8px;">Geen boten gevonden.</div>';
     listEl.querySelectorAll('[data-key]').forEach(c => c.addEventListener('click', () => {
@@ -4099,6 +4100,8 @@
         <div><h3>${btEsc(b.name || 'Naam onbekend')}</h3>
         <div class="bt-m">${btEsc([b.obj ? 'object ' + b.obj : '', b.places.map(p => p.warehouse.name + ' · plek ' + p.tag).join(', ')].filter(Boolean).join(' · '))}</div></div>
       </div>
+      <label class="bt-none"><input type="checkbox" data-none ${v.geenOpbok ? 'checked' : ''}> Geen opbokgegevens nodig <span class="bt-m">(bijv. staat op een trailer of in het water)</span></label>
+      <div class="bt-setup"${v.geenOpbok ? ' hidden' : ''}>
       <div class="bt-sec"><h4>Zo staat hij op de kant</h4>
         <div class="bt-diagram">${bootDiagramSvg(v)}</div>
         <div class="bt-legend"><span><i style="background:#A0703C"></i>hout onder kiel/bodem</span><span><i style="background:#B54834"></i>bokken</span><span><i style="background:#2E5E8C"></i>kiel</span></div>
@@ -4142,6 +4145,7 @@
         <button type="button" class="btn ghost small" data-add="bokken">+ Bok toevoegen</button>
         <button type="button" class="btn ghost small" data-add="bokpaar">+ Paar bokken (BB + SB)</button>
       </div>
+      </div>
       <div class="bt-sec"><h4>Opmerkingen</h4>
         <textarea rows="3" data-f="notitie" placeholder="bijv. achterste blok 10 cm vóór einde kiel, bokken met ketting vast">${btEsc(v.notitie || '')}</textarea>
       </div>
@@ -4177,6 +4181,8 @@
       en[list][id][f] = newVal;
       done();
     }));
+    const noneEl = panel.querySelector('[data-none]');
+    if(noneEl) noneEl.addEventListener('change', () => { const en = touch(); en.geenOpbok = noneEl.checked; done(); });
     panel.querySelectorAll('[data-gap]').forEach(el => el.addEventListener('change', () => {
       const en = touch(); btRespace(en[el.getAttribute('data-gap')], btNum(el.value)); done();
     }));
@@ -5000,7 +5006,7 @@
 
     const botenList = bootList();
     if(botenList.length){
-      const todo = botenList.filter(b => !bootHasSetup(state.bootOpbok && state.bootOpbok[b.key])).length;
+      const todo = botenList.filter(b => { const e = state.bootOpbok && state.bootOpbok[b.key]; return !(e && e.geenOpbok) && !bootHasSetup(e); }).length;
       const botenTab = document.createElement('div');
       botenTab.className = 'wh-tab' + (showBoten ? ' active' : '');
       botenTab.innerHTML = `<span class="wh-tab-name-text">⚓ Boten op de kant</span>` + (todo ? `<span class="wh-count">${todo} in te vullen</span>` : '');
