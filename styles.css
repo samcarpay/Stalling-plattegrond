@@ -1308,7 +1308,6 @@
 .bt-layout>*{min-width:0;}
 @media (max-width:760px){.bt-layout{grid-template-columns:1fr;}}
 .bt-list{display:flex;flex-direction:column;gap:8px;max-height:75vh;overflow-y:auto;}
-@media (max-width:760px){.bt-list{max-height:40vh;}}
 .bt-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;cursor:pointer;}
 .bt-card.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset;}
 .bt-n{font-weight:700;}
@@ -1342,3 +1341,32 @@
 .bt-none{display:flex !important;gap:8px;align-items:center;margin:12px 0 0;font-size:14px !important;color:var(--ink) !important;cursor:pointer;}
 .bt-none input{width:18px;height:18px;}
 .bt-setup[hidden]{display:none;}
+.bt-back{display:none;margin-bottom:10px;}
+.bt-dg-phone{display:none;}
+/* phone: the list, or one boat full-width — no sideways scrolling */
+@media (max-width:760px){
+  .bt-list{max-height:none;overflow:visible;}
+  .bt-page:not(.show-detail) .bt-panel{display:none;}
+  .bt-page.show-detail .bt-title,.bt-page.show-detail .bt-sub,.bt-page.show-detail .bt-search,.bt-page.show-detail .bt-list{display:none;}
+  .bt-page.show-detail .bt-back{display:inline-flex;}
+  .bt-panel{padding:14px 12px;}
+  .bt-dg-wide{display:none;}
+  .bt-dg-phone{display:block;}
+  .bt-diagram{padding:4px;}
+  .bt-diagram svg{min-width:0;}
+  .bt-none{align-items:flex-start;}
+  .bt-none input{flex:none;margin-top:2px;}
+  .bt-none .bt-m{display:block;}
+  .bt-grid{grid-template-columns:1fr 1fr;}
+  .bt-table{min-width:0;}
+  .bt-table thead{display:none;}
+  .bt-table tr{display:grid;grid-template-columns:36px 1fr 1fr 32px;gap:6px 8px;align-items:end;padding:8px 0;border-bottom:1px solid var(--line);}
+  .bt-table td{padding:0;border:0;}
+  .bt-table td[colspan]{grid-column:1/-1;}
+  .bt-table td[data-l]::before{content:attr(data-l);display:block;font-size:11.5px;color:var(--ink-soft);margin-bottom:2px;}
+  .bt-table .bt-id{font-weight:700;align-self:center;}
+  .bt-table .bt-wide{grid-column:2/4;}
+  .bt-table .bt-r2{grid-column:2;}
+  .bt-table .bt-x{grid-column:4;grid-row:1;align-self:center;font-size:18px;width:auto;}
+  .bt-tablewrap{overflow:visible;}
+}

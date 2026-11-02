@@ -3937,6 +3937,7 @@
   // numbers are fine too (escapeHtml only takes text)
   const btEsc = v => escapeHtml(String(v == null ? '' : v));
   let botenSelectedKey = null;
+  let botenPhoneDetail = false; // phone: showing one boat instead of the list
   let botenSearch = '';
 
   function bootKeyOf(o){
@@ -3999,8 +4000,10 @@
     Object.values(obj).forEach(x => { x.pos = map[Math.round(btNum(x.pos) * 100) / 100]; });
   }
 
-  function bootDiagramSvg(e){
-    const W = 760, H = 250, padL = 40, padR = 40, ground = 205;
+  // compact = narrow version for a phone screen: bigger text, labels staggered
+  function bootDiagramSvg(e, compact){
+    const W = compact ? 400 : 760, H = compact ? 275 : 250, padL = compact ? 26 : 40, padR = padL, ground = 205;
+    const fs = compact ? 15 : 12, bw = compact ? 18 : 28, tw = compact ? 11 : 16;
     const L = Math.max(btNum(e.lengte), 1), scale = (W - padL - padR) / L;
     const x = m => padL + (L - m) * scale; // stern (0 m) right, bow left
     const blocks = btSorted(e.blokken), stands = btSorted(e.bokken);
@@ -4013,30 +4016,32 @@
     const keel = kl > 0 ? `<rect x="${x(mid + kl / 2)}" y="${keelBottom-30}" width="${kl*scale}" height="30" fill="#2E5E8C" opacity=".85" rx="3"/>` : '';
     const blockSvg = blocks.map((k, i) => {
       const h = btNum(k.hoogte) * 0.9;
-      return `<rect x="${x(btNum(k.pos))-14}" y="${ground-h}" width="28" height="${h}" fill="#A0703C" rx="2"/>
-        <text x="${x(btNum(k.pos))}" y="${ground+16}" text-anchor="middle" font-size="12" fill="#A0703C" font-weight="700">H${i+1} · ${btEsc(k.hoogte)} cm</text>`;
+      const ly = ground + (compact ? 20 + (i % 2) * 20 : 16);
+      return `<rect x="${x(btNum(k.pos))-bw/2}" y="${ground-h}" width="${bw}" height="${h}" fill="#A0703C" rx="2"/>
+        <text x="${x(btNum(k.pos))}" y="${ly}" text-anchor="middle" font-size="${fs}" fill="#A0703C" font-weight="700">H${i+1} · ${btEsc(k.hoogte)}${compact ? '' : ' cm'}</text>`;
     }).join('');
     const seen = {};
     const standSvg = stands.map(st => {
       const k = btNum(st.pos).toFixed(2); if(seen[k]) return ''; seen[k] = 1;
       const top = ground - btNum(st.hoogte) * 0.75, px = x(btNum(st.pos));
       return `<line x1="${px}" y1="${ground}" x2="${px}" y2="${top}" stroke="#B54834" stroke-width="4"/>
-        <path d="M ${px-16} ${ground} L ${px} ${ground-26} L ${px+16} ${ground}" fill="none" stroke="#B54834" stroke-width="3"/>
+        <path d="M ${px-tw} ${ground} L ${px} ${ground-26} L ${px+tw} ${ground}" fill="none" stroke="#B54834" stroke-width="3"/>
         <rect x="${px-10}" y="${top-5}" width="20" height="6" fill="#B54834" rx="2"/>
-        <text x="${px}" y="${top-12}" text-anchor="middle" font-size="12" fill="#B54834" font-weight="700">${btEsc(st.hoogte)} cm</text>`;
+        <text x="${px}" y="${top-12}" text-anchor="middle" font-size="${fs}" fill="#B54834" font-weight="700">${btEsc(st.hoogte)} cm</text>`;
     }).join('');
     return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Zijaanzicht van de boot op de kant">
       <path d="${hull}" fill="#DCE6F0" stroke="#2E5E8C" stroke-width="2"/>${keel}${blockSvg}${standSvg}
       <line x1="10" y1="${ground}" x2="${W-10}" y2="${ground}" stroke="#9a9a94" stroke-width="2"/>
-      <text x="${x(L)}" y="${H-6}" text-anchor="middle" font-size="12" fill="#5C5C5C">boeg</text>
-      <text x="${x(0)}" y="${H-6}" text-anchor="middle" font-size="12" fill="#5C5C5C">achtersteven (0 m)</text>
-      <text x="${W/2}" y="${H-6}" text-anchor="middle" font-size="12" fill="#5C5C5C">${btFmt(L)} m</text></svg>`;
+      <text x="${x(L)}" y="${H-6}" text-anchor="${compact ? 'start' : 'middle'}" font-size="${fs}" fill="#5C5C5C">boeg</text>
+      <text x="${x(0)}" y="${H-6}" text-anchor="${compact ? 'end' : 'middle'}" font-size="${fs}" fill="#5C5C5C">${compact ? 'achter (0 m)' : 'achtersteven (0 m)'}</text>
+      <text x="${W/2}" y="${H-6}" text-anchor="middle" font-size="${fs}" fill="#5C5C5C">${btFmt(L)} m</text></svg>`;
   }
 
   function openBotenPage(key){
     showBoten = true;
     showOverview = showAgenda = showPlanning = showNieuweKlanten = showWinterstalling = showKlanten = false;
     if(key) botenSelectedKey = key;
+    botenPhoneDetail = !!key;
     if(typeof closeMobileSheet === 'function') closeMobileSheet();
     render();
     window.scrollTo(0, 0);
@@ -4055,12 +4060,12 @@
       .slice().sort((a, c) => group(a) - group(c) || (a.name || '').localeCompare(c.name || '', 'nl'));
 
     const page = document.createElement('div');
-    page.className = 'bt-page';
+    page.className = 'bt-page' + (botenPhoneDetail ? ' show-detail' : '');
     page.innerHTML = `
       <h2 class="bt-title">⚓ Boten op de kant</h2>
       <p class="bt-sub">Hoe elke boot op het terrein staat: hout, bokken en afstanden. Zo hoeven jullie niet elk jaar opnieuw te meten.</p>
       <input type="text" class="bt-search" placeholder="Zoek een boot, eigenaar of objectnummer…" value="${btEsc(botenSearch)}">
-      <div class="bt-layout"><div class="bt-list"></div><div class="bt-panel"></div></div>`;
+      <div class="bt-layout"><div class="bt-list"></div><div><button type="button" class="btn ghost bt-back">← Alle boten</button><div class="bt-panel"></div></div></div>`;
     wrap.appendChild(page);
     const searchEl = page.querySelector('.bt-search');
     searchEl.addEventListener('input', () => { botenSearch = searchEl.value; const pos = searchEl.selectionStart; renderBotenPage(); const n = document.querySelector('.bt-search'); n.focus(); n.setSelectionRange(pos, pos); });
@@ -4079,9 +4084,15 @@
     }).join('') : '<div class="bt-m" style="padding:8px;">Geen boten gevonden.</div>';
     listEl.querySelectorAll('[data-key]').forEach(c => c.addEventListener('click', () => {
       botenSelectedKey = c.getAttribute('data-key');
+      botenPhoneDetail = true;
       renderBotenPage();
-      if(isPhoneLayout()) document.querySelector('.bt-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if(window.matchMedia('(max-width:760px)').matches) window.scrollTo(0, 0);
     }));
+    page.querySelector('.bt-back').addEventListener('click', () => {
+      botenPhoneDetail = false;
+      renderBotenPage();
+      document.querySelector('.bt-card.on')?.scrollIntoView({ block: 'center' });
+    });
 
     const b = all.find(x => x.key === botenSelectedKey);
     const panel = page.querySelector('.bt-panel');
@@ -4104,10 +4115,10 @@
         <div><h3>${btEsc(b.name || 'Naam onbekend')}</h3>
         <div class="bt-m">${btEsc([b.obj ? 'object ' + b.obj : '', b.places.map(p => p.warehouse.name + ' · plek ' + p.tag).join(', ')].filter(Boolean).join(' · '))}</div></div>
       </div>
-      <label class="bt-none"><input type="checkbox" data-none ${v.geenOpbok ? 'checked' : ''}> Geen opbokgegevens nodig <span class="bt-m">(bijv. staat op een trailer of in het water)</span></label>
+      <label class="bt-none"><input type="checkbox" data-none ${v.geenOpbok ? 'checked' : ''}> <span>Geen opbokgegevens nodig <span class="bt-m">(bijv. staat op een trailer of in het water)</span></span></label>
       <div class="bt-setup"${v.geenOpbok ? ' hidden' : ''}>
       <div class="bt-sec"><h4>Zo staat hij op de kant</h4>
-        <div class="bt-diagram">${bootDiagramSvg(v)}</div>
+        <div class="bt-diagram"><div class="bt-dg-wide">${bootDiagramSvg(v)}</div><div class="bt-dg-phone">${bootDiagramSvg(v, true)}</div></div>
         <div class="bt-legend"><span><i style="background:#A0703C"></i>hout onder kiel/bodem</span><span><i style="background:#B54834"></i>bokken</span><span><i style="background:#2E5E8C"></i>kiel</span></div>
         <div class="bt-facts">
           ${gapField('Tussen de bokken', stands, 'bokken')}
@@ -4129,21 +4140,21 @@
       </div>
       <div class="bt-sec"><h4>Hout onder de kiel / bodem</h4>
         <div class="bt-tablewrap"><table class="bt-table"><thead><tr><th></th><th>Vanaf achtersteven (m)</th><th>Hoogte (cm)</th><th>Opbouw</th><th></th></tr></thead><tbody>
-          ${blocks.map((k, i) => `<tr><td>H${i+1}</td>
-            <td><input type="number" inputmode="decimal" step="0.05" value="${btEsc(k.pos)}" data-item="blokken.${k.id}.pos"></td>
-            <td><input type="number" inputmode="decimal" step="1" value="${btEsc(k.hoogte)}" data-item="blokken.${k.id}.hoogte"></td>
-            <td><input type="text" value="${btEsc(k.opbouw || '')}" placeholder="bijv. 2 balken 12 cm + plank" data-item="blokken.${k.id}.opbouw"></td>
+          ${blocks.map((k, i) => `<tr><td class="bt-id">H${i+1}</td>
+            <td data-l="Vanaf achter (m)"><input type="number" inputmode="decimal" step="0.05" value="${btEsc(k.pos)}" data-item="blokken.${k.id}.pos"></td>
+            <td data-l="Hoogte (cm)"><input type="number" inputmode="decimal" step="1" value="${btEsc(k.hoogte)}" data-item="blokken.${k.id}.hoogte"></td>
+            <td data-l="Opbouw" class="bt-wide"><input type="text" value="${btEsc(k.opbouw || '')}" placeholder="bijv. 2 balken 12 cm + plank" data-item="blokken.${k.id}.opbouw"></td>
             <td class="bt-x" data-del="blokken.${k.id}" title="Verwijderen">✕</td></tr>`).join('') || '<tr><td colspan="5" class="bt-m">Nog geen blokken.</td></tr>'}
         </tbody></table></div>
         <button type="button" class="btn ghost small" data-add="blokken">+ Blok toevoegen</button>
       </div>
       <div class="bt-sec"><h4>Bokken</h4>
         <div class="bt-tablewrap"><table class="bt-table"><thead><tr><th></th><th>Kant</th><th>Vanaf achtersteven (m)</th><th>Hoogte (cm)</th><th>Stand / gat</th><th></th></tr></thead><tbody>
-          ${stands.map((st, i) => `<tr><td>B${i+1}</td>
-            <td><select data-item="bokken.${st.id}.kant"><option ${st.kant === 'BB' ? 'selected' : ''}>BB</option><option ${st.kant === 'SB' ? 'selected' : ''}>SB</option></select></td>
-            <td><input type="number" inputmode="decimal" step="0.05" value="${btEsc(st.pos)}" data-item="bokken.${st.id}.pos"></td>
-            <td><input type="number" inputmode="decimal" step="1" value="${btEsc(st.hoogte)}" data-item="bokken.${st.id}.hoogte"></td>
-            <td><input type="text" value="${btEsc(st.stand || '')}" placeholder="bijv. gat 5" data-item="bokken.${st.id}.stand"></td>
+          ${stands.map((st, i) => `<tr><td class="bt-id">B${i+1}</td>
+            <td data-l="Kant"><select data-item="bokken.${st.id}.kant"><option ${st.kant === 'BB' ? 'selected' : ''}>BB</option><option ${st.kant === 'SB' ? 'selected' : ''}>SB</option></select></td>
+            <td data-l="Vanaf achter (m)"><input type="number" inputmode="decimal" step="0.05" value="${btEsc(st.pos)}" data-item="bokken.${st.id}.pos"></td>
+            <td data-l="Hoogte (cm)" class="bt-r2"><input type="number" inputmode="decimal" step="1" value="${btEsc(st.hoogte)}" data-item="bokken.${st.id}.hoogte"></td>
+            <td data-l="Stand / gat"><input type="text" value="${btEsc(st.stand || '')}" placeholder="bijv. gat 5" data-item="bokken.${st.id}.stand"></td>
             <td class="bt-x" data-del="bokken.${st.id}" title="Verwijderen">✕</td></tr>`).join('') || '<tr><td colspan="6" class="bt-m">Nog geen bokken.</td></tr>'}
         </tbody></table></div>
         <button type="button" class="btn ghost small" data-add="bokken">+ Bok toevoegen</button>
