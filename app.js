@@ -4048,7 +4048,11 @@
     const all = bootList();
     if(!botenSelectedKey || !all.some(b => b.key === botenSelectedKey)) botenSelectedKey = all[0] ? all[0].key : null;
     const q = botenSearch.trim().toLowerCase();
-    const shown = q ? all.filter(b => [b.name, b.obj, ...b.places.map(p => p.warehouse.name + ' ' + p.tag)].join(' ').toLowerCase().includes(q)) : all;
+    // boats that still need their details first, then the filled-in ones,
+    // then the ones that don't need any — alphabetical within each group
+    const group = b => { const e = state.bootOpbok && state.bootOpbok[b.key]; return e && e.geenOpbok ? 2 : bootHasSetup(e) ? 1 : 0; };
+    const shown = (q ? all.filter(b => [b.name, b.obj, ...b.places.map(p => p.warehouse.name + ' ' + p.tag)].join(' ').toLowerCase().includes(q)) : all)
+      .slice().sort((a, c) => group(a) - group(c) || (a.name || '').localeCompare(c.name || '', 'nl'));
 
     const page = document.createElement('div');
     page.className = 'bt-page';
