@@ -1,23 +1,56 @@
 {
   "rules": {
     "Plattegrond-111ws-qbh3Tm791": {
-      ".read": "auth != null && auth.provider != 'anonymous'",
-      ".write": "auth != null && auth.provider != 'anonymous'"
+      ".read": "auth != null && auth.token.email == 'zwartendijkstalling@outlook.com'",
+      ".write": "auth != null && auth.token.email == 'zwartendijkstalling@outlook.com'",
+      "mail-log": {
+        "pickups": {
+          ".indexOn": "at"
+        }
+      }
     },
     "pickup-appointments": {
-      ".read": "auth != null && auth.provider != 'anonymous'",
-      ".write": "auth != null && auth.provider != 'anonymous'",
+      ".read": "auth != null && auth.token.email == 'zwartendijkstalling@outlook.com'",
+      ".write": "auth != null && auth.token.email == 'zwartendijkstalling@outlook.com'",
       "$apptId": {
-        ".write": "(auth != null && auth.provider != 'anonymous') || !data.exists()"
+        ".write": "(auth != null && auth.token.email == 'zwartendijkstalling@outlook.com') || !data.exists()",
+        ".validate": "(auth != null && auth.token.email == 'zwartendijkstalling@outlook.com') || (newData.hasChildren(['name', 'contact', 'vehicleDesc', 'date', 'time', 'createdAt', 'status']) && newData.child('status').val() == 'requested')",
+        "name": {
+          ".validate": "(auth != null && auth.token.email == 'zwartendijkstalling@outlook.com') || (newData.isString() && newData.val().length >= 1 && newData.val().length <= 100)"
+        },
+        "contact": {
+          ".validate": "(auth != null && auth.token.email == 'zwartendijkstalling@outlook.com') || (newData.isString() && newData.val().length <= 120 && newData.val().matches(/^[^@ ]+@[^@ ]+[.][^@ ]+$/))"
+        },
+        "vehicleDesc": {
+          ".validate": "(auth != null && auth.token.email == 'zwartendijkstalling@outlook.com') || (newData.isString() && newData.val().length >= 1 && newData.val().length <= 100)"
+        },
+        "date": {
+          ".validate": "(auth != null && auth.token.email == 'zwartendijkstalling@outlook.com') || (newData.isString() && newData.val().matches(/^20[0-9][0-9]-[01][0-9]-[0-3][0-9]$/))"
+        },
+        "time": {
+          ".validate": "(auth != null && auth.token.email == 'zwartendijkstalling@outlook.com') || (newData.isString() && newData.val().matches(/^[0-2][0-9]:[0-5][0-9]$/))"
+        },
+        "notes": {
+          ".validate": "(auth != null && auth.token.email == 'zwartendijkstalling@outlook.com') || (newData.isString() && newData.val().length <= 2000)"
+        },
+        "createdAt": {
+          ".validate": "(auth != null && auth.token.email == 'zwartendijkstalling@outlook.com') || (newData.isNumber())"
+        },
+        "status": {
+          ".validate": "(auth != null && auth.token.email == 'zwartendijkstalling@outlook.com') || (newData.isString())"
+        },
+        "$other": {
+          ".validate": "(auth != null && auth.token.email == 'zwartendijkstalling@outlook.com')"
+        }
       }
     },
     "blocked-dates": {
       ".read": true,
-      ".write": "auth != null && auth.provider != 'anonymous'"
+      ".write": "auth != null && auth.token.email == 'zwartendijkstalling@outlook.com'"
     },
     "werkloods-bookings": {
-      ".read": "auth != null && auth.provider != 'anonymous'",
-      ".write": "auth != null && auth.provider != 'anonymous'"
+      ".read": "auth != null && auth.token.email == 'zwartendijkstalling@outlook.com'",
+      ".write": "auth != null && auth.token.email == 'zwartendijkstalling@outlook.com'"
     }
   }
 }

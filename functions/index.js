@@ -499,18 +499,22 @@ function escHtml(s){
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 // plain text → simple HTML (paragraphs, line breaks, clickable links)
-function textToHtml(text){
-  return text.split(/\n{2,}/).map(p => '<p style="margin:0 0 12px;">' + escHtml(p).replace(/\n/g, '<br>')
-    .replace(/(https:\/\/[^\s<]+)/g, '<a href="$1">$1</a>') + '</p>').join('');
+// links = false: web addresses stay plain text (for mails that contain what a
+// visitor typed, so the form can't be used to send clickable links)
+function textToHtml(text, links = true){
+  return text.split(/\n{2,}/).map(p => {
+    const h = escHtml(p).replace(/\n/g, '<br>');
+    return '<p style="margin:0 0 12px;">' + (links ? h.replace(/(https:\/\/[^\s<]+)/g, '<a href="$1">$1</a>') : h) + '</p>';
+  }).join('');
 }
 
 // text = the message itself; the signature with the logo is added here
-async function sendMail({ to, subject, text, attachments, copy = true }){
+async function sendMail({ to, subject, text, attachments, copy = true, links = true }){
   const info = await mailTransport().sendMail({
     from: MAIL_FROM, to, bcc: copy ? COPY_ADDRESS : undefined, replyTo: MAIL_ADDRESS,
     subject,
     text: text + '\n\n' + MAIL_SIGNATURE_TEXT,
-    html: '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#1c1c1c;">' + textToHtml(text) + MAIL_SIGNATURE_HTML + '</div>',
+    html: '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#1c1c1c;">' + textToHtml(text, links) + MAIL_SIGNATURE_HTML + '</div>',
     attachments: [...(attachments || []), MAIL_LOGO],
   });
   // a rejected customer address counts as failed; a rejected copy doesn't
@@ -747,34 +751,45 @@ exports.pickupConfirmationMail = onValueCreated(
   async (event) => {
     const a = event.data.val() || {};
     if(a.source) return; // staff-made in the app, not a customer request
-    const to = String(a.contact || '').trim();
+    const to = String(a.contact || '').trim().slice(0, 120);
     if(!looksLikeEmail(to)) return;
-    const logRef = admin.database().ref(`${SYNC_PATH}/mail-log/pickups/${event.params.apptId}`);
-    const claim = await logRef.transaction(cur => (cur ? undefined : { status: 'bezig', at: Date.now() }));
+    const logsRef = admin.database().ref(`${SYNC_PATH}/mail-log/pickups`);
+    // at most 3 confirmations a day to the same address — stops the form
+    // being used to flood someone's inbox from info@
+    const dayAgo = Date.now() - 24 * 3600 * 1000;
+    const recent = (await logsRef.orderByChild('at').startAt(dayAgo).once('value')).val() || {};
+    if(Object.values(recent).filter(l => String(l.to || '').toLowerCase() === to.toLowerCase()).length >= 3){
+      logger.warn('Pickup confirmation skipped: 3 already sent today to this address', event.params.apptId);
+      return;
+    }
+    const logRef = logsRef.child(event.params.apptId);
+    const claim = await logRef.transaction(cur => (cur ? undefined : { status: 'bezig', at: Date.now(), to }));
     if(!claim.committed) return;
-    const naam = String(a.name || '').trim() || 'klant';
+    const cut = (v, n) => String(v || '').trim().slice(0, n);
+    const naam = cut(a.name, 100) || 'klant';
     try{
       await sendMail({
         to,
         copy: false,
+        links: false,
         subject: 'Uw ophaalverzoek bij Zwartendijk Stalling',
         text:
 `Beste ${naam},
 
 Bedankt voor uw ophaalverzoek. Wij hebben het goed ontvangen:
 
-Object: ${a.vehicleDesc || '—'}
+Object: ${cut(a.vehicleDesc, 100) || '—'}
 Datum: ${longDutchDate(a.date) || '—'}
-Tijd: ${a.time || '—'}${a.notes ? '\nOpmerkingen: ' + a.notes : ''}
+Tijd: ${cut(a.time, 5) || '—'}${a.notes ? '\nOpmerkingen: ' + cut(a.notes, 2000) : ''}
 
 Komt de gekozen datum of tijd ons onverhoopt niet uit, dan nemen wij contact met u op.
 
 Heeft u vragen, of wilt u iets wijzigen? Beantwoord deze e-mail of bel ons gerust.`,
       });
-      await logRef.set({ status: 'verzonden', at: Date.now() });
+      await logRef.set({ status: 'verzonden', at: Date.now(), to });
     }catch(err){
       logger.error('Pickup confirmation failed', event.params.apptId, err.message);
-      await logRef.set({ status: 'fout', at: Date.now(), error: String(err.message || err).slice(0, 300) });
+      await logRef.set({ status: 'fout', at: Date.now(), to, error: String(err.message || err).slice(0, 300) });
     }
   }
 );

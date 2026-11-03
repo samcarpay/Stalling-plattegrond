@@ -2,11 +2,12 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Logged in with e-mail and password. Leftover anonymous sign-ins from
-    // before anonymous login was switched off do NOT count.
+    // Logged in with the stalling's own account. Any other login — an
+    // anonymous one, or an account someone managed to create — does NOT count.
     function medewerker() {
       return request.auth != null
-        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+        && request.auth.token.firebase.sign_in_provider == 'password'
+        && request.auth.token.email == 'zwartendijkstalling@outlook.com';
     }
 
     // ---- checks for a request sent in by a visitor (not logged in) ----
