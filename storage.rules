@@ -1,0 +1,24 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Only the stalling's own account (same as the database rules).
+    function medewerker() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password'
+        && request.auth.token.email == 'zwartendijkstalling@outlook.com';
+    }
+
+    // Boat photos (Boten op de kant): JPEGs made smaller in the app.
+    match /boten/{file} {
+      allow read, delete: if medewerker();
+      allow create, update: if medewerker()
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType == 'image/jpeg';
+    }
+
+    // everything else: closed
+    match /{everything=**} {
+      allow read, write: if false;
+    }
+  }
+}

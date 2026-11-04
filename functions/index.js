@@ -135,6 +135,24 @@ async function putGithubFile(token, path, content, message){
   if(!res.ok) throw new Error(`GitHub ${res.status} for ${path}: ${(await res.text()).slice(0, 300)}`);
 }
 
+const PHOTO_BUCKET = 'stalling-plattegrond.firebasestorage.app';
+
+// copies boat photos that aren't in the backup repo yet (the full-size ones;
+// thumbnails can be remade). At most 60 a night, so a big batch spreads out.
+async function backupBoatPhotos(token){
+  const doneRef = admin.database().ref(`${SYNC_PATH}/backupStatus/fotos`);
+  const done = (await doneRef.once('value')).val() || {};
+  const [files] = await admin.storage().bucket(PHOTO_BUCKET).getFiles({ prefix: 'boten/' });
+  const todo = files.filter(f => /^boten\/[\w-]+\.jpg$/.test(f.name) && !f.name.endsWith('_t.jpg'))
+    .filter(f => !done[f.name.slice(6, -4)]).slice(0, 60);
+  for(const f of todo){
+    const [content] = await f.download();
+    await putGithubFile(token, `fotos/${f.name.slice(6)}`, content, `Foto ${f.name.slice(6)}`);
+    await doneRef.child(f.name.slice(6, -4)).set(Date.now());
+  }
+  return todo.length;
+}
+
 // Which backup days to thin out. Keeps every day for the last 30 days,
 // then the earliest backup of each week up to a year back, then the
 // earliest of each month. dates: 'YYYY-MM-DD' strings; today likewise.
@@ -193,6 +211,7 @@ exports.nightlyBackup = onSchedule(
     region: 'europe-west1',
     secrets: [GITHUB_BACKUP_TOKEN, VAPID_PRIVATE_KEY],
     retryCount: 0, // tomorrow's run is the retry — one failure message per night is enough
+    timeoutSeconds: 540, // room for copying new boat photos
   },
   async () => {
     const db = admin.database();
@@ -230,6 +249,17 @@ exports.nightlyBackup = onSchedule(
       const zip = Buffer.from(await zipRes.arrayBuffer());
       await putGithubFile(token, `${folder}/app-code.zip`, zip, `Back-up ${y}-${m}-${d}: app code`);
       logger.info('Backup saved', folder, raw.length, 'bytes of floor plan');
+
+      // new boat photos (Boten op de kant) — each photo is copied once, to
+      // fotos/ in the backup repo, and kept there even if it's deleted in the
+      // app. A failure here doesn't fail the backup; tomorrow tries again.
+      try{
+        const copied = await backupBoatPhotos(token);
+        if(copied) logger.info('Boat photos backed up', copied);
+      }catch(photoErr){
+        logger.error('Backing up boat photos failed', photoErr.message);
+        await statusRef.update({ lastPhotoError: String(photoErr.message).slice(0, 300), lastPhotoErrorAt: Date.now() }).catch(() => {});
+      }
       await statusRef.update({ lastSuccessAt: Date.now(), lastSuccessFolder: folder, lastError: null });
 
       // thinning out never fails the backup itself — it just tries again tomorrow

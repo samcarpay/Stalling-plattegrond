@@ -4047,6 +4047,97 @@
     window.scrollTo(0, 0);
   }
 
+  // ── boat photos: made smaller here, stored in Firebase Storage under
+  // boten/<id>.jpg (+ boten/<id>_t.jpg thumbnail); the entry keeps the links
+  const btPhotos = e => Object.entries((e && e.fotos) || {}).map(([id, f]) => ({ id, ...f })).sort((a, c) => (a.op || 0) - (c.op || 0));
+
+  function btShrink(file, max, quality){
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob(bl => bl ? resolve(bl) : reject(new Error('kon de foto niet verkleinen')), 'image/jpeg', quality);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('dit bestand kan niet als foto worden geopend')); };
+      img.src = url;
+    });
+  }
+
+  async function btUploadPhotos(b, files, statusEl){
+    if(!firebase.storage){ alert('Foto\'s opslaan lukt nu niet (geen verbinding met de opslag). Probeer het later opnieuw.'); return; }
+    const bucket = firebase.storage().ref('boten');
+    let done = 0, failed = 0;
+    for(const file of files){
+      if(statusEl) statusEl.textContent = `Foto ${done + failed + 1} van ${files.length} uploaden…`;
+      try{
+        const [full, thumb] = await Promise.all([btShrink(file, 1600, 0.82), btShrink(file, 360, 0.7)]);
+        const id = uid();
+        const meta = { contentType: 'image/jpeg' };
+        await bucket.child(id + '.jpg').put(full, meta);
+        await bucket.child(id + '_t.jpg').put(thumb, meta);
+        const [url, thumbUrl] = await Promise.all([bucket.child(id + '.jpg').getDownloadURL(), bucket.child(id + '_t.jpg').getDownloadURL()]);
+        const en = bootEntry(b); en.updatedAt = Date.now();
+        if(!en.fotos) en.fotos = {};
+        en.fotos[id] = { url, thumb: thumbUrl, op: Date.now(), bijschrift: '' };
+        save();
+        done++;
+      }catch(err){
+        console.error('Photo upload failed', err);
+        failed++;
+      }
+    }
+    if(showBoten && botenSelectedKey === b.key) renderBotenPage();
+    if(failed) alert(`${failed} foto${failed === 1 ? '' : '\'s'} kon${failed === 1 ? '' : 'den'} niet worden opgeslagen. Controleer de internetverbinding en probeer het opnieuw.`);
+  }
+
+  function btOpenPhoto(b, id){
+    const e = state.bootOpbok && state.bootOpbok[b.key];
+    const f = e && e.fotos && e.fotos[id];
+    if(!f) return;
+    const box = document.createElement('div');
+    box.className = 'bt-lb';
+    box.innerHTML = `<div class="bt-lb-inner">
+        <img src="${btEsc(f.url)}" alt="">
+        <div class="bt-lb-bar">
+          <input type="text" placeholder="Bijschrift, bijv. kiel op blok H2" value="${btEsc(f.bijschrift || '')}">
+          <button type="button" class="btn ghost small" data-lbdel>Verwijderen</button>
+          <button type="button" class="btn small" data-lbclose>Sluiten</button>
+        </div>
+        <div class="bt-m">${btEsc(new Date(f.op || Date.now()).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' }))}</div>
+      </div>`;
+    document.body.appendChild(box);
+    const cap = box.querySelector('input');
+    const close = () => {
+      const val = cap.value.trim();
+      if(val !== (f.bijschrift || '')){
+        const en = bootEntry(b); en.updatedAt = Date.now();
+        if(en.fotos && en.fotos[id]){ en.fotos[id].bijschrift = val; save(); }
+      }
+      box.remove();
+      if(showBoten) renderBotenPage();
+    };
+    box.addEventListener('click', ev => { if(ev.target === box) close(); });
+    box.querySelector('[data-lbclose]').addEventListener('click', close);
+    box.querySelector('[data-lbdel]').addEventListener('click', () => {
+      if(!confirm('Deze foto verwijderen?')) return;
+      const en = bootEntry(b); en.updatedAt = Date.now();
+      if(en.fotos) delete en.fotos[id];
+      save();
+      if(firebase.storage){
+        const ref = firebase.storage().ref('boten');
+        ref.child(id + '.jpg').delete().catch(() => {});
+        ref.child(id + '_t.jpg').delete().catch(() => {});
+      }
+      box.remove();
+      if(showBoten) renderBotenPage();
+    });
+  }
+
   function renderBotenPage(){
     const wrap = document.getElementById('plan');
     wrap.innerHTML = '';
@@ -4161,6 +4252,11 @@
         <button type="button" class="btn ghost small" data-add="bokpaar">+ Paar bokken (BB + SB)</button>
       </div>
       </div>
+      <div class="bt-sec"><h4>Foto's</h4>
+        ${btPhotos(v).length ? `<div class="bt-photos">${btPhotos(v).map(f => `<button type="button" class="bt-thumb" data-foto="${btEsc(f.id)}" title="${btEsc(f.bijschrift || '')}"><img src="${btEsc(f.thumb || f.url)}" alt="${btEsc(f.bijschrift || 'foto')}" loading="lazy">${f.bijschrift ? `<span>${btEsc(f.bijschrift)}</span>` : ''}</button>`).join('')}</div>` : '<div class="bt-m">Nog geen foto\'s.</div>'}
+        <label class="btn ghost small bt-addphoto">+ Foto toevoegen<input type="file" accept="image/*" multiple hidden data-addphoto></label>
+        <span class="bt-m" data-photostatus></span>
+      </div>
       <div class="bt-sec"><h4>Opmerkingen</h4>
         <textarea rows="3" data-f="notitie" placeholder="bijv. achterste blok 10 cm vóór einde kiel, bokken met ketting vast">${btEsc(v.notitie || '')}</textarea>
       </div>
@@ -4224,6 +4320,13 @@
       en.historie[uid()] = { op: iso, actie: el.getAttribute('data-hist') === 'opgebokt' ? 'op de kant gezet' : 'terug in het water' };
       done();
     }));
+    const photoInput = panel.querySelector('[data-addphoto]');
+    photoInput.addEventListener('change', () => {
+      const files = [...photoInput.files];
+      photoInput.value = '';
+      if(files.length) btUploadPhotos(b, files, panel.querySelector('[data-photostatus]'));
+    });
+    panel.querySelectorAll('[data-foto]').forEach(el => el.addEventListener('click', () => btOpenPhoto(b, el.getAttribute('data-foto'))));
     panel.querySelectorAll('[data-goto]').forEach(el => el.addEventListener('click', () => {
       const p = b.places[+el.getAttribute('data-goto')];
       jumpToSpot(p.warehouse.id, p.spot.id);
