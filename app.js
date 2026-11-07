@@ -6628,7 +6628,7 @@
     const body = document.getElementById('modalBody');
     body.className = 'modal wide';
 
-    const periodLabels = { maand:'per maand', kwartaal:'per kwartaal', halfjaar:'per halfjaar', jaar:'per jaar' };
+    const periodLabels = { maand:'per maand', kwartaal:'per kwartaal', halfjaar:'per halfjaar', jaar:'per jaar', winterseizoen:'per winterseizoen' };
 
     function renderRows(){
       const keys = Object.keys(TYPES);
@@ -6645,6 +6645,7 @@
               <option value="kwartaal" ${t.period==='kwartaal'?'selected':''}>per kwartaal</option>
               <option value="halfjaar" ${t.period==='halfjaar'?'selected':''}>per halfjaar</option>
               <option value="jaar" ${t.period==='jaar'?'selected':''}>per jaar</option>
+              <option value="winterseizoen" ${t.period==='winterseizoen'?'selected':''}>per winterseizoen</option>
             </select>
           </div>
         `;
