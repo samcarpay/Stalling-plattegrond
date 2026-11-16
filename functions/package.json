@@ -9,7 +9,7 @@
     "firebase-admin": "^13.0.0",
     "firebase-functions": "^6.0.0",
     "web-push": "^3.6.7",
-    "nodemailer": "^6.9.16",
+    "nodemailer": "^10.1.4",
     "jspdf": "^2.5.2"
   }
 }
