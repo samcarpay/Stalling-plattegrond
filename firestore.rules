@@ -67,6 +67,21 @@ service cloud.firestore {
         && tekst(d.get('opmerkingen', ''), 0, 2000);
     }
 
+    // One base64 image (a digital signature, or a single uploaded photo),
+    // or a JSON array of one per page — exactly what canvas.toDataURL()
+    // and parseScanImages() in onderteken.html produce, nothing else.
+    // admin.html shows this value directly in an <img>/<a> tag, so this
+    // is what keeps a visitor from smuggling arbitrary text/HTML into it.
+    function geldigAfbeeldingData(v) {
+      return v is string
+        && v.matches('^data:image/(png|jpe?g);base64,[A-Za-z0-9+/=]+$');
+    }
+    function geldigeHandtekening(v) {
+      return v is string && v.size() < 6000000
+        && (geldigAfbeeldingData(v)
+            || v.matches('^\\[("data:image/(png|jpe?g);base64,[A-Za-z0-9+/=]+")(,"data:image/(png|jpe?g);base64,[A-Za-z0-9+/=]+")*\\]$'));
+    }
+
     match /aanvragen/{docId} {
       // Logged in (the contract program): anything, e.g. a contract you
       // create yourself. A visitor: only a complete, plausible request.
@@ -87,6 +102,9 @@ service cloud.firestore {
                 resource.data.status == 'klaar_voor_ondertekening'
                 && request.resource.data.status == 'voltooid'
                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['handtekening','status','ondertekendOp','ondertekenMethode'])
+                && geldigeHandtekening(request.resource.data.handtekening)
+                && request.resource.data.ondertekenMethode in ['digitaal','foto']
+                && request.resource.data.ondertekendOp == request.time
               );
       allow delete: if medewerker();
     }
