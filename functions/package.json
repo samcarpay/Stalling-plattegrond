@@ -10,6 +10,6 @@
     "firebase-functions": "^6.0.0",
     "web-push": "^3.6.7",
     "nodemailer": "^6.9.16",
-    "jspdf": "^2.5.2"
+    "jspdf": "^4.2.1"
   }
 }
